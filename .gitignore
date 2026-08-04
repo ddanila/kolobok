@@ -1,0 +1,8 @@
+.tools/
+build/
+dist/
+*.OBJ
+*.ERR
+*.o
+*.core
+core
