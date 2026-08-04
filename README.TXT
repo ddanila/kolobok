@@ -18,9 +18,10 @@ FILES
 OPTIONS
   KOLOBOK.EXE -nosound    Disable PC-speaker effects
   KOLOBOK.EXE -selftest   Run the automated target test and exit
+  KOLOBOK.EXE -benchmark  Measure render and 30 Hz pacing performance
 
 REQUIREMENTS
-  386-compatible PC, VGA, DOS 3.3 or later, about 640 KB conventional memory.
+  386DX-40 or faster, VGA, DOS 3.3 or later, about 640 KB conventional memory.
 
 Source and build instructions: https://github.com/ddanila/kolobok
 License: MIT

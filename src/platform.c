@@ -106,9 +106,3 @@ void speaker_shutdown(void)
     outp(0x61, inp(0x61) & 0xfc);
     sound_frames = 0;
 }
-
-void wait_vblank(void)
-{
-    while (inp(0x3da) & 8) { }
-    while (!(inp(0x3da) & 8)) { }
-}

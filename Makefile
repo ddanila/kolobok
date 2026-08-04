@@ -1,4 +1,4 @@
-.PHONY: all assets toolchain dos host-test test run dist clean
+.PHONY: all assets toolchain dos host-test perf-test test run dist clean
 
 PYTHON ?= python3
 HOST_CC ?= gcc
@@ -23,7 +23,10 @@ host-test: build/test_game
 	./build/test_game
 	$(PYTHON) tools/assets.py --check
 
-test: dos host-test
+perf-test: dos
+	bash tools/dosbox-perf-test.sh
+
+test: dos host-test perf-test
 	bash tools/dosbox-test.sh
 
 run: dos

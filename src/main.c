@@ -5,8 +5,25 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 static int sound_on = 1;
+
+static void wait_for_frame(clock_t *next_frame, unsigned *remainder)
+{
+    clock_t now;
+    do {
+        now = clock();
+    } while ((long)(now - *next_frame) < 0);
+    if ((long)(now - *next_frame) > (long)CLOCKS_PER_SEC / 5L)
+        *next_frame = now;
+    *next_frame += CLOCKS_PER_SEC / 30;
+    *remainder += CLOCKS_PER_SEC % 30;
+    if (*remainder >= 30) {
+        ++*next_frame;
+        *remainder -= 30;
+    }
+}
 
 static void play_events(unsigned events)
 {
@@ -23,7 +40,7 @@ static int selftest(AssetPack *assets)
     GameState game;
     GameState completion;
     GameInput input;
-    u32 crc;
+    u32 crc, vram_crc;
     int i;
     if (assets->map_w != 80 || assets->map_h != 11 || assets->berry_count != 8)
         return 0;
@@ -59,13 +76,70 @@ static int selftest(AssetPack *assets)
         return 0;
     if (!video_init(assets)) return 0;
     video_render_game(&game);
+    video_present();
     crc = video_frame_crc();
+    vram_crc = video_vram_crc();
     video_shutdown();
-    if (crc != 0x5bd3ecb5UL) {
-        printf("KOLOBOK SELFTEST FAIL CRC=%08lX EXPECTED=5BD3ECB5\n", crc);
+    if (crc != 0x5bd3ecb5UL || vram_crc != crc) {
+        printf("KOLOBOK SELFTEST FAIL CRC=%08lX VRAM=%08lX EXPECTED=5BD3ECB5\n",
+            crc, vram_crc);
         return 0;
     }
-    printf("KOLOBOK SELFTEST PASS CRC=%08lX\n", crc);
+    printf("KOLOBOK SELFTEST PASS CRC=%08lX VRAM=%08lX\n", crc, vram_crc);
+    return 1;
+}
+
+static int benchmark(AssetPack *assets)
+{
+    GameState game;
+    GameInput input;
+    clock_t started, elapsed, paced_started, paced_elapsed, next_frame;
+    unsigned long fps10, paced_fps10;
+    unsigned frame;
+    unsigned frame_remainder = 0;
+    const unsigned frame_count = 60;
+    const int max_camera = (int)assets->map_w * KOLO_TILE_SIZE - 320;
+
+    game_init(&game, assets);
+    memset(&input, 0, sizeof(input));
+    input.right = 1;
+    if (!video_init(assets)) return 0;
+    video_render_game(&game);
+    video_present();
+    started = clock();
+    for (frame = 0; frame < frame_count; ++frame) {
+        int camera = (int)((unsigned long)frame * 37UL % (unsigned long)max_camera);
+        game_step(&game, &input);
+        game.camera_x = (s32)camera << KOLO_FP_SHIFT;
+        game.player.x = (s32)(camera + 153) << KOLO_FP_SHIFT;
+        game.player.animation = (u8)(frame % 3);
+        video_render_game(&game);
+        video_present();
+    }
+    elapsed = clock() - started;
+    paced_started = clock();
+    next_frame = paced_started;
+    for (frame = 0; frame < frame_count; ++frame) {
+        int camera = (int)((unsigned long)frame * 37UL % (unsigned long)max_camera);
+        wait_for_frame(&next_frame, &frame_remainder);
+        game_step(&game, &input);
+        game.camera_x = (s32)camera << KOLO_FP_SHIFT;
+        game.player.x = (s32)(camera + 153) << KOLO_FP_SHIFT;
+        game.player.animation = (u8)(frame % 3);
+        video_render_game(&game);
+        video_present();
+    }
+    paced_elapsed = clock() - paced_started;
+    video_shutdown();
+    if (elapsed == 0) elapsed = 1;
+    if (paced_elapsed == 0) paced_elapsed = 1;
+    fps10 = (unsigned long)frame_count * (unsigned long)CLOCKS_PER_SEC * 10UL /
+        (unsigned long)elapsed;
+    paced_fps10 = (unsigned long)frame_count * (unsigned long)CLOCKS_PER_SEC * 10UL /
+        (unsigned long)paced_elapsed;
+    printf("KOLOBOK BENCH frames=%u ticks=%lu hz=%lu fps10=%lu paced10=%lu\n",
+        frame_count, (unsigned long)elapsed, (unsigned long)CLOCKS_PER_SEC,
+        fps10, paced_fps10);
     return 1;
 }
 
@@ -84,14 +158,17 @@ int main(int argc, char **argv)
     GameInput input;
     char error[80];
     int running = 1, title = 1, paused = 0;
-    unsigned cadence = 0;
+    unsigned frame_remainder = 0;
     u32 title_ticks = 0;
+    clock_t next_frame;
     int test_mode = 0;
+    int benchmark_mode = 0;
     int i;
 
     for (i = 1; i < argc; ++i) {
         if (stricmp(argv[i], "-nosound") == 0) sound_on = 0;
         else if (stricmp(argv[i], "-selftest") == 0) test_mode = 1;
+        else if (stricmp(argv[i], "-benchmark") == 0) benchmark_mode = 1;
     }
     if (!assets_load(&assets, "KOLOBOK.DAT", error, sizeof(error))) {
         fprintf(stderr, "KOLOBOK: %s\n", error);
@@ -101,6 +178,11 @@ int main(int argc, char **argv)
         int passed = selftest(&assets);
         assets_free(&assets);
         return passed ? 0 : 3;
+    }
+    if (benchmark_mode) {
+        int passed = benchmark(&assets);
+        assets_free(&assets);
+        return passed ? 0 : 6;
     }
     if (!video_init(&assets)) {
         assets_free(&assets);
@@ -115,12 +197,10 @@ int main(int argc, char **argv)
     speaker_init(sound_on);
     game_init(&game, &assets);
     video_render_title(&assets, 0); video_present();
+    next_frame = clock();
 
     while (running) {
-        wait_vblank();
-        cadence += 30;
-        if (cadence < 70) continue;
-        cadence -= 70;
+        wait_for_frame(&next_frame, &frame_remainder);
         speaker_tick();
         if (key_pressed(KEY_S)) {
             sound_on = !sound_on;

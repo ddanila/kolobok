@@ -11,5 +11,6 @@ void video_render_game(const GameState *game);
 void video_render_pause(const GameState *game);
 void video_render_win(const GameState *game);
 u32 video_frame_crc(void);
+u32 video_vram_crc(void);
 
 #endif

@@ -7,8 +7,8 @@ from Grandmother and Grandfather's cottage, collect eight forest berries, avoid 
 bounce on the animals, and bring the berries home.
 
 The MVP is a real-mode DOS program written mostly in C. It renders directly into
-VGA mode `13h` (320×200, 256 colours), targets a 386-class machine, and runs at a
-fixed 30 Hz gameplay update rate.
+VGA mode `13h` (320×200, 256 colours), targets a 386DX-40, and runs at a fixed
+30 Hz gameplay update rate.
 
 ## Play
 
@@ -75,12 +75,24 @@ The test suite performs:
   persistence, and rejection of a corrupted data pack;
 - deterministic level and asset-budget validation;
 - a Linux-hosted Open Watcom cross-build for the DOS target;
+- a target-side render benchmark at the DOSBox-X 386DX-40 profile, gated at
+  36 fps raw throughput and 29.5 fps while paced at the game's 30 Hz rate;
 - a headless DOSBox-X target self-test covering asset loading, gameplay completion,
-  VGA rendering, and a pinned reference-frame CRC.
+  VGA rendering and presentation, and pinned back-buffer/VRAM reference CRCs.
 
 The DOS-only self-test may also be run manually as
 `KOLOBOK.EXE -selftest`. A passing build prints
-`KOLOBOK SELFTEST PASS CRC=5BD3ECB5` and returns exit code zero.
+`KOLOBOK SELFTEST PASS CRC=5BD3ECB5 VRAM=5BD3ECB5` and returns exit code zero.
+
+Run only the 386 performance regression with:
+
+```sh
+make perf-test
+```
+
+The current build measures about 45.5 raw rendered frames/s and 30.3 paced
+frames/s at 7,350 cycles. See [the performance methodology](docs/performance.md)
+for calibration, baseline, regression thresholds, and limitations.
 
 ## Project layout
 
@@ -90,10 +102,14 @@ The DOS-only self-test may also be run manually as
 - `tools/assets.py` — palette, sprite, tile, validation, and `KOLOBOK.DAT` packer
 - `tests/` — host-side gameplay and data-integrity tests
 - `dosbox-x.conf` — 386-oriented emulator configuration
+- `docs/performance.md` — 386DX-40 benchmark method and measured results
 - `docs/art-direction.png` — folklore art-direction reference
 
 The simulation uses 24.8 fixed-point arithmetic and has no floating-point runtime
-dependency. Rendering uses a 64 KiB back buffer copied to VGA memory each frame.
+dependency. Rendering uses a paragraph-aligned 64 KiB back buffer. Its hot paths
+use 386 string instructions for fills, tiles, masked sprites, and the copy to VGA
+memory; fully off-screen objects are rejected before rasterization. A clock-based
+frame scheduler preserves the 30 Hz update rate when a render spans VGA retraces.
 The compact data pack contains a 256-entry 6-bit DAC palette, 16×16 indexed tiles
 and sprites, the map, collectibles, enemies, checkpoint, and a CRC-32 checksum.
 

@@ -3,9 +3,6 @@
 #include <conio.h>
 #include <dos.h>
 #include <i86.h>
-#include <malloc.h>
-#include <memory.h>
-#include <string.h>
 
 #define SCREEN_W 320
 #define SCREEN_H 200
@@ -13,6 +10,87 @@
 #define TRANSPARENT 0
 
 static unsigned char __far *framebuffer;
+static unsigned framebuffer_segment;
+
+static void clear_386(unsigned segment, unsigned char color);
+#pragma aux clear_386 = \
+    "mov es,dx" \
+    "cld" \
+    "mov ah,al" \
+    "mov bx,ax" \
+    "shl eax,16" \
+    "mov ax,bx" \
+    "xor di,di" \
+    "mov cx,16000" \
+    "rep stosd" \
+    parm [dx] [al] modify [ax bx cx di es];
+
+static void fill_rect_386(unsigned offset, unsigned width, unsigned height,
+                          unsigned char color, unsigned segment);
+#pragma aux fill_rect_386 = \
+    "mov es,dx" \
+    "cld" \
+    "mov dx,320" \
+    "sub dx,si" \
+    "rect_row:" \
+    "mov cx,si" \
+    "rep stosb" \
+    "add di,dx" \
+    "dec bx" \
+    "jnz rect_row" \
+    parm [di] [si] [bx] [al] [dx] modify [ax bx cx dx si di es];
+
+static void blit_opaque_386(const unsigned char *source, unsigned offset,
+                            unsigned segment);
+#pragma aux blit_opaque_386 = \
+    "mov es,ax" \
+    "cld" \
+    "mov cx,16" \
+    "opaque_row:" \
+    "movsd" \
+    "movsd" \
+    "movsd" \
+    "movsd" \
+    "add di,304" \
+    "dec cx" \
+    "jnz opaque_row" \
+    parm [si] [di] [ax] modify [cx si di es];
+
+static void blit_masked_386(const unsigned char *source, unsigned offset,
+                            unsigned segment);
+#pragma aux blit_masked_386 = \
+    "mov es,ax" \
+    "cld" \
+    "mov dx,16" \
+    "masked_row:" \
+    "mov bx,16" \
+    "masked_pixel:" \
+    "lodsb" \
+    "test al,al" \
+    "jz masked_skip" \
+    "mov es:[di],al" \
+    "masked_skip:" \
+    "inc di" \
+    "dec bx" \
+    "jnz masked_pixel" \
+    "add di,304" \
+    "dec dx" \
+    "jnz masked_row" \
+    parm [si] [di] [ax] modify [ax bx dx si di es];
+
+static void present_386(unsigned segment);
+#pragma aux present_386 = \
+    "push ds" \
+    "mov ds,ax" \
+    "mov ax,0a000h" \
+    "mov es,ax" \
+    "cld" \
+    "xor si,si" \
+    "xor di,di" \
+    "mov cx,16000" \
+    "rep movsd" \
+    "pop ds" \
+    parm [ax] modify [ax cx si di es];
 
 static const unsigned char font[36][7] = {
     {14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},
@@ -37,22 +115,19 @@ static void set_mode(unsigned mode)
     int86(0x10, &regs, &regs);
 }
 
-static void put_pixel(int x, int y, unsigned char color)
-{
-    if ((unsigned)x < SCREEN_W && (unsigned)y < SCREEN_H)
-        framebuffer[(unsigned)y * SCREEN_W + (unsigned)x] = color;
-}
-
 static void fill_rect(int x, int y, int w, int h, unsigned char color)
 {
-    int row;
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
     if (x + w > SCREEN_W) w = SCREEN_W - x;
     if (y + h > SCREEN_H) h = SCREEN_H - y;
     if (w <= 0 || h <= 0) return;
-    for (row = 0; row < h; ++row)
-        _fmemset(framebuffer + (unsigned)(y + row) * SCREEN_W + x, color, w);
+    if (x == 0 && y == 0 && w == SCREEN_W && h == SCREEN_H) {
+        clear_386(framebuffer_segment, color);
+        return;
+    }
+    fill_rect_386((unsigned)y * SCREEN_W + x, w, h, color,
+                  framebuffer_segment);
 }
 
 static int glyph_index(char c)
@@ -96,15 +171,25 @@ static void draw_number(int x, int y, unsigned value, unsigned char color)
 
 static void blit(const unsigned char *source, int x, int y, int masked)
 {
-    int sx, sy;
-    for (sy = 0; sy < 16; ++sy) {
-        int dy = y + sy;
-        if ((unsigned)dy >= SCREEN_H) continue;
-        for (sx = 0; sx < 16; ++sx) {
-            int dx = x + sx;
+    int sx, sy, first_x, first_y, last_x, last_y;
+    if (x <= -16 || x >= SCREEN_W || y <= -16 || y >= SCREEN_H) return;
+    if (x >= 0 && x <= SCREEN_W - 16 && y >= 0 && y <= SCREEN_H - 16) {
+        unsigned offset = (unsigned)y * SCREEN_W + x;
+        if (masked) blit_masked_386(source, offset, framebuffer_segment);
+        else blit_opaque_386(source, offset, framebuffer_segment);
+        return;
+    }
+    first_x = x < 0 ? -x : 0;
+    first_y = y < 0 ? -y : 0;
+    last_x = x + 16 > SCREEN_W ? SCREEN_W - x : 16;
+    last_y = y + 16 > SCREEN_H ? SCREEN_H - y : 16;
+    for (sy = first_y; sy < last_y; ++sy) {
+        unsigned char __far *target = framebuffer +
+            (unsigned)(y + sy) * SCREEN_W + x + first_x;
+        for (sx = first_x; sx < last_x; ++sx) {
             unsigned char color = source[sy * 16 + sx];
-            if ((unsigned)dx < SCREEN_W && (!masked || color != TRANSPARENT))
-                framebuffer[(unsigned)dy * SCREEN_W + (unsigned)dx] = color;
+            if (!masked || color != TRANSPARENT)
+                target[sx - first_x] = color;
         }
     }
 }
@@ -192,8 +277,8 @@ static void draw_hud(const GameState *game)
 int video_init(const AssetPack *assets)
 {
     unsigned i;
-    framebuffer = (unsigned char __far *)_fmalloc(64000UL);
-    if (framebuffer == NULL) return 0;
+    if (_dos_allocmem(4000, &framebuffer_segment) != 0) return 0;
+    framebuffer = (unsigned char __far *)MK_FP(framebuffer_segment, 0);
     set_mode(0x13);
     outp(0x3c8, 0);
     for (i = 0; i < 768; ++i) outp(0x3c9, assets->palette[i]);
@@ -203,13 +288,14 @@ int video_init(const AssetPack *assets)
 void video_shutdown(void)
 {
     set_mode(0x03);
-    if (framebuffer != NULL) _ffree(framebuffer);
+    if (framebuffer_segment != 0) _dos_freemem(framebuffer_segment);
     framebuffer = NULL;
+    framebuffer_segment = 0;
 }
 
 void video_present(void)
 {
-    _fmemcpy((void __far *)MK_FP(0xa000, 0), framebuffer, 64000UL);
+    present_386(framebuffer_segment);
 }
 
 void video_render_game(const GameState *game)
@@ -257,15 +343,25 @@ void video_render_win(const GameState *game)
     draw_text(88, 119, "ENTER TO PLAY AGAIN", 23, 1);
 }
 
-u32 video_frame_crc(void)
+static u32 crc_far_buffer(const unsigned char __far *buffer)
 {
     u32 crc = 0xffffffffUL;
     u32 i;
     int bit;
     for (i = 0; i < 64000UL; ++i) {
-        crc ^= framebuffer[i];
+        crc ^= buffer[i];
         for (bit = 0; bit < 8; ++bit)
             crc = (crc >> 1) ^ (0xedb88320UL & (0UL - (crc & 1UL)));
     }
     return crc ^ 0xffffffffUL;
+}
+
+u32 video_frame_crc(void)
+{
+    return crc_far_buffer(framebuffer);
+}
+
+u32 video_vram_crc(void)
+{
+    return crc_far_buffer((const unsigned char __far *)MK_FP(0xa000, 0));
 }

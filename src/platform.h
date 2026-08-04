@@ -26,6 +26,4 @@ void speaker_play(unsigned frequency, unsigned frames);
 void speaker_tick(void);
 void speaker_shutdown(void);
 
-void wait_vblank(void);
-
 #endif
