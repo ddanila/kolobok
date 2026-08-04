@@ -19,6 +19,7 @@ OPTIONS
   KOLOBOK.EXE -nosound    Disable PC-speaker effects
   KOLOBOK.EXE -selftest   Run the automated target test and exit
   KOLOBOK.EXE -benchmark  Measure render and 30 Hz pacing performance
+  KOLOBOK.EXE -capture    Write a deterministic KOLOBOK.PPM screenshot
 
 REQUIREMENTS
   386DX-40 or faster, VGA, DOS 3.3 or later, and at least 160 KB of free

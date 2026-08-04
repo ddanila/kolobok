@@ -15,6 +15,8 @@ from PIL import Image, ImageDraw
 ROOT = Path(__file__).resolve().parents[1]
 TILE = 16
 TRANSPARENT = 0
+PLAYER_FRAMES = 4
+SPRITE_COUNT = 9
 
 # VGA-friendly RGB palette. The file stores 6-bit DAC values.
 COLORS = [
@@ -69,34 +71,39 @@ def draw_tiles() -> Image.Image:
     return sheet
 
 
-def draw_kolobok(d: ImageDraw.ImageDraw, ox: int, frame: int) -> None:
-    d.ellipse((ox + 1, 1, ox + 14, 14), fill=1)
-    d.ellipse((ox + 2, 2, ox + 13, 13), fill=13)
-    d.ellipse((ox + 4, 3, ox + 10, 6), fill=14)
-    eye_y = 7 + (frame == 2)
-    d.point((ox + 5, eye_y), fill=1)
-    d.point((ox + 10, eye_y), fill=1)
-    d.line((ox + 6, 11, ox + 9, 11), fill=16)
-    if frame == 0:
-        d.point((ox + 2, 12), fill=12); d.point((ox + 13, 11), fill=12)
-    elif frame == 1:
-        d.point((ox + 3, 14), fill=12); d.point((ox + 12, 13), fill=12)
-    else:
-        d.point((ox + 2, 10), fill=12); d.point((ox + 13, 13), fill=12)
+def draw_kolobok() -> Image.Image:
+    sprite = pal_image((TILE, TILE))
+    d = ImageDraw.Draw(sprite)
+    d.ellipse((1, 1, 14, 14), fill=1)
+    d.ellipse((2, 2, 13, 13), fill=13)
+    d.ellipse((4, 3, 10, 6), fill=14)
+    d.point((5, 7), fill=1)
+    d.point((10, 7), fill=1)
+    d.line((6, 11, 9, 11), fill=16)
+    d.point((2, 12), fill=12)
+    d.point((13, 11), fill=12)
+    return sprite
 
 
 def draw_sprites() -> Image.Image:
-    sheet = pal_image((8 * TILE, TILE))
+    sheet = pal_image((SPRITE_COUNT * TILE, TILE))
+    kolobok = draw_kolobok()
+    rotations = (
+        kolobok,
+        kolobok.transpose(Image.Transpose.ROTATE_270),
+        kolobok.transpose(Image.Transpose.ROTATE_180),
+        kolobok.transpose(Image.Transpose.ROTATE_90),
+    )
+    for frame, sprite in enumerate(rotations):
+        sheet.paste(sprite, (frame * TILE, 0))
     d = ImageDraw.Draw(sheet)
-    for frame in range(3):
-        draw_kolobok(d, frame * TILE, frame)
-    x = 3 * TILE
+    x = 4 * TILE
     d.ellipse((x + 3, 4, x + 12, 13), fill=16)
     d.ellipse((x + 4, 4, x + 11, 12), fill=17)
     d.rectangle((x + 7, 1, x + 8, 5), fill=5)
     d.line((x + 8, 2, x + 11, 1), fill=6)
     d.point((x + 5, 6), fill=18)
-    x = 4 * TILE
+    x = 5 * TILE
     d.ellipse((x + 2, 5, x + 13, 14), fill=23)
     d.ellipse((x + 4, 3, x + 11, 10), fill=23)
     d.polygon((x + 5, 5, x + 5, 0, x + 8, 4), fill=23)
@@ -104,19 +111,19 @@ def draw_sprites() -> Image.Image:
     d.point((x + 7, 6), fill=1); d.point((x + 10, 6), fill=1)
     d.rectangle((x + 11, 8, x + 14, 9), fill=15)
     d.line((x + 3, 14, x + 12, 14), fill=1)
-    x = 5 * TILE
+    x = 6 * TILE
     d.ellipse((x + 2, 6, x + 12, 14), fill=19)
     d.polygon((x + 4, 8, x + 3, 2, x + 8, 6), fill=19)
     d.polygon((x + 9, 6, x + 11, 1, x + 13, 8), fill=19)
     d.polygon((x + 11, 9, x + 15, 11, x + 11, 12), fill=20)
     d.point((x + 9, 7), fill=1)
     d.line((x + 2, 14, x + 11, 14), fill=1)
-    x = 6 * TILE
+    x = 7 * TILE
     d.rectangle((x + 7, 3, x + 8, 15), fill=21)
     d.rectangle((x + 2, 2, x + 13, 9), fill=17)
     d.polygon((x + 10, 2, x + 14, 5, x + 10, 8), fill=18)
     d.rectangle((x + 4, 4, x + 9, 6), fill=15)
-    x = 7 * TILE
+    x = 8 * TILE
     for px, py in ((8, 1), (3, 5), (12, 7), (7, 12)):
         d.line((x + px - 1, py, x + px + 1, py), fill=31)
         d.line((x + px, py - 1, x + px, py + 1), fill=31)
@@ -157,6 +164,11 @@ def validate(level: dict, cells: bytearray) -> None:
         assert 0 <= x < width and 0 <= y < height
         assert cells[y * width + x] == 0, f"berry at {x},{y} is inside terrain"
     assert level["home"][0] < 5
+    home_x = level["home"][0]
+    for y in range(5, level["ground_y"]):
+        for x in range(max(0, home_x - 1), home_x + 4):
+            assert cells[y * width + x] == 0, \
+                f"platform at {x},{y} overlaps the cottage"
     assert max(last - first + 1 for first, last in level["pits"]) <= 2
     assert any(group["y"] <= 5 for group in level["platforms"])
     assert any(group["y"] >= 8 for group in level["platforms"])
@@ -276,7 +288,7 @@ def validate_raster_encodings(tiles: Image.Image, sprites: Image.Image) -> None:
     for index in range(6):
         tile = tiles.crop((index * TILE, 0, (index + 1) * TILE, TILE))
         assert decode_planar_tile(encode_planar_tile(tile)) == tile.tobytes()
-    for index in range(8):
+    for index in range(SPRITE_COUNT):
         sprite = sprites.crop((index * TILE, 0, (index + 1) * TILE, TILE))
         pixels = sprite.tobytes()
         assert decode_sprite_spans(encode_sprite_spans(sprite)) == pixels
@@ -290,12 +302,17 @@ def validate_raster_encodings(tiles: Image.Image, sprites: Image.Image) -> None:
                     for x, color in enumerate(pixels[y * TILE:(y + 1) * TILE])
                 )
                 assert decoded == expected
+    player_frames = {
+        sprites.crop((index * TILE, 0, (index + 1) * TILE, TILE)).tobytes()
+        for index in range(PLAYER_FRAMES)
+    }
+    assert len(player_frames) == PLAYER_FRAMES
 
 
 def write_pack(out: Path, tiles: Image.Image, sprites: Image.Image, level: dict, cells: bytearray) -> None:
     sprite_spans = []
     planar_sprite_spans = []
-    for index in range(8):
+    for index in range(SPRITE_COUNT):
         sprite = sprites.crop((index * TILE, 0, (index + 1) * TILE, TILE))
         encoded = encode_sprite_spans(sprite)
         assert decode_sprite_spans(encoded) == sprite.tobytes()
@@ -308,8 +325,9 @@ def write_pack(out: Path, tiles: Image.Image, sprites: Image.Image, level: dict,
     span_blob = b"".join(sprite_spans)
     planar_span_blob = b"".join(planar_sprite_spans)
     payload = bytearray(b"KOLODAT1")
-    payload.extend(struct.pack("<9H", 3, level["width"], level["height"], 6, 8,
-                               len(level["berries"]), len(level["enemies"]), TILE, TILE))
+    payload.extend(struct.pack("<9H", 3, level["width"], level["height"], 6,
+                               SPRITE_COUNT, len(level["berries"]),
+                               len(level["enemies"]), TILE, TILE))
     for r, g, b in COLORS:
         payload.extend((r >> 2, g >> 2, b >> 2))
     for index in range(6):

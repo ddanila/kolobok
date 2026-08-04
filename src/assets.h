@@ -11,7 +11,7 @@ typedef signed long s32;
 #define KOLO_TILE_SIZE 16
 #define KOLO_MAX_BERRIES 8
 #define KOLO_MAX_ENEMIES 8
-#define KOLO_MAX_SPRITES 8
+#define KOLO_MAX_SPRITES 9
 
 typedef struct KoloPoint {
     u16 x;

@@ -25,5 +25,7 @@ u32 video_vram_crc(void);
 void video_profile_enable(int enabled);
 void video_profile_reset(void);
 void video_profile_get(VideoProfile *result);
+int video_display_state_valid(void);
+int video_write_ppm(const char *path, const AssetPack *assets);
 
 #endif

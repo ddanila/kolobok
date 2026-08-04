@@ -2,14 +2,9 @@
 
 #include <string.h>
 
-#define ACCEL 48L
-#define BRAKE 64L
-#define MAX_SPEED 640L
 #define GRAVITY 55L
 #define MAX_FALL 760L
-#define JUMP_SPEED (-850L)
 #define SHORT_JUMP (-350L)
-#define BOUNCE_SPEED (-660L)
 
 static s32 fp(int value) { return (s32)value << KOLO_FP_SHIFT; }
 static int px(s32 value) { return (int)(value >> KOLO_FP_SHIFT); }
@@ -47,6 +42,7 @@ void game_respawn(GameState *game)
     game->player.vy = 0;
     game->player.invulnerable = 30;
     game->player.on_ground = 0;
+    game->player.enemy_bounce = 0;
     ++game->respawns;
 }
 
@@ -88,8 +84,12 @@ static void move_horizontal(GameState *game)
     x = px(p->x);
     y1 = px(p->y) + 2;
     y2 = px(p->y) + KOLO_PLAYER_H - 2;
-    if (p->vx > 0 && (game_tile_solid(game, x + KOLO_PLAYER_W - 1, y1) ||
-                      game_tile_solid(game, x + KOLO_PLAYER_W - 1, y2))) {
+    if (x < 0) {
+        p->x = 0;
+        p->vx = 0;
+    } else if (p->vx > 0 &&
+               (game_tile_solid(game, x + KOLO_PLAYER_W - 1, y1) ||
+                game_tile_solid(game, x + KOLO_PLAYER_W - 1, y2))) {
         tx = (x + KOLO_PLAYER_W - 1) / KOLO_TILE_SIZE;
         p->x = fp(tx * KOLO_TILE_SIZE - KOLO_PLAYER_W);
         p->vx = 0;
@@ -155,7 +155,8 @@ static void update_enemies(GameState *game, int old_bottom)
             continue;
         if (p->vy > 0 && old_bottom <= ey + 4) {
             p->y = fp(ey - KOLO_PLAYER_H);
-            p->vy = BOUNCE_SPEED;
+            p->vy = KOLO_ENEMY_BOUNCE_SPEED;
+            p->enemy_bounce = 1;
             game->events |= KOLO_EVENT_BOUNCE;
         } else if (p->invulnerable == 0) {
             game->events |= KOLO_EVENT_HURT;
@@ -202,16 +203,17 @@ void game_step(GameState *game, const GameInput *input)
     if (p->invulnerable) --p->invulnerable;
     if (input->jump_pressed) p->jump_buffer = 3;
     if (input->left && !input->right) {
-        p->vx -= ACCEL;
-        if (p->vx < -MAX_SPEED) p->vx = -MAX_SPEED;
+        p->vx -= (p->vx > 0 ? KOLO_MOVE_REVERSE_ACCEL : KOLO_MOVE_ACCEL);
+        if (p->vx < -KOLO_MAX_SPEED) p->vx = -KOLO_MAX_SPEED;
     } else if (input->right && !input->left) {
-        p->vx += ACCEL;
-        if (p->vx > MAX_SPEED) p->vx = MAX_SPEED;
+        p->vx += (p->vx < 0 ? KOLO_MOVE_REVERSE_ACCEL : KOLO_MOVE_ACCEL);
+        if (p->vx > KOLO_MAX_SPEED) p->vx = KOLO_MAX_SPEED;
     } else {
-        approach_zero(&p->vx, BRAKE);
+        approach_zero(&p->vx, KOLO_MOVE_BRAKE);
     }
     if (p->jump_buffer && (p->on_ground || p->coyote)) {
-        p->vy = JUMP_SPEED;
+        p->vy = KOLO_JUMP_SPEED;
+        p->enemy_bounce = 0;
         p->on_ground = 0;
         p->coyote = 0;
         p->jump_buffer = 0;
@@ -219,12 +221,14 @@ void game_step(GameState *game, const GameInput *input)
     } else if (p->jump_buffer) {
         --p->jump_buffer;
     }
-    if (!input->jump_held && p->vy < SHORT_JUMP) p->vy = SHORT_JUMP;
+    if (!input->jump_held && !p->enemy_bounce && p->vy < SHORT_JUMP)
+        p->vy = SHORT_JUMP;
     old_bottom = px(p->y) + KOLO_PLAYER_H;
     p->vy += GRAVITY;
     if (p->vy > MAX_FALL) p->vy = MAX_FALL;
     move_horizontal(game);
     move_vertical(game);
+    if (p->vy >= 0) p->enemy_bounce = 0;
     if (!p->on_ground && p->coyote) --p->coyote;
     update_enemies(game, old_bottom);
     x = px(p->x); y = px(p->y);
@@ -235,10 +239,8 @@ void game_step(GameState *game, const GameInput *input)
         game_respawn(game);
     }
     update_collectibles(game);
-    if (p->vx != 0 && p->on_ground)
-        p->animation = (u8)((game->ticks / 4) % 3);
-    else
-        p->animation = p->on_ground ? 0 : 2;
+    if (p->vx != 0)
+        p->animation = (u8)((px(p->x) >> 2) & 3);
     target_camera = p->x - fp(153);
     if (target_camera < 0) target_camera = 0;
     if (target_camera > fp(game->assets->map_w * KOLO_TILE_SIZE - 320))

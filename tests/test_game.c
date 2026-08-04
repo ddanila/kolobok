@@ -15,7 +15,13 @@ static void test_assets(void)
     assert(pack.berry_count == 8);
     assert(pack.enemy_count == 4);
     assert(pack.tile_count == 6);
-    assert(pack.sprite_count == 8);
+    assert(pack.sprite_count == 9);
+    {
+        int x, y;
+        for (y = 5; y < 9; ++y)
+            for (x = 1; x <= 5; ++x)
+                assert(pack.map[y * pack.map_w + x] == 0);
+    }
     assets_free(&pack);
 }
 
@@ -106,6 +112,78 @@ static void test_checkpoint_persistence(void)
     assets_free(&pack);
 }
 
+static void test_inertia_and_rolling(void)
+{
+    AssetPack pack;
+    GameState game;
+    GameInput input = {0, 1, 0, 0};
+    char error[80];
+    unsigned seen_frames = 0;
+    int i;
+    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
+    game_init(&game, &pack);
+    for (i = 0; i < 20; ++i) {
+        game_step(&game, &input);
+        seen_frames |= 1U << game.player.animation;
+        if (i == 0) assert(game.player.vx == KOLO_MOVE_ACCEL);
+    }
+    assert(game.player.vx == KOLO_MAX_SPEED);
+    assert(seen_frames == 0x0f);
+    memset(&input, 0, sizeof(input));
+    game_step(&game, &input);
+    assert(game.player.vx == KOLO_MAX_SPEED - KOLO_MOVE_BRAKE);
+    for (i = 0; i < 31; ++i) game_step(&game, &input);
+    assert(game.player.vx == 0);
+    assets_free(&pack);
+}
+
+static void test_left_boundary_does_not_snap(void)
+{
+    AssetPack pack;
+    GameState game;
+    GameInput input = {1, 0, 0, 0};
+    char error[80];
+    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
+    game_init(&game, &pack);
+    game.player.x = 0;
+    game.player.vx = -KOLO_MOVE_ACCEL;
+    game_step(&game, &input);
+    assert(game.player.x == 0);
+    assert(game.player.vx == 0);
+    assets_free(&pack);
+}
+
+static void test_enemy_bounce_boost(void)
+{
+    AssetPack pack;
+    GameState game;
+    GameInput input = {0, 0, 0, 0};
+    EnemyState *enemy;
+    char error[80];
+    int i;
+    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
+    game_init(&game, &pack);
+    enemy = &game.enemies[0];
+    enemy->vx = 0;
+    game.player.x = enemy->x;
+    game.player.y = enemy->y -
+        ((s32)KOLO_PLAYER_H << KOLO_FP_SHIFT);
+    game.player.vy = 400;
+    game.player.on_ground = 0;
+    game_step(&game, &input);
+    assert((game.events & KOLO_EVENT_BOUNCE) != 0);
+    assert(game.player.vy == KOLO_ENEMY_BOUNCE_SPEED);
+    assert(game.player.enemy_bounce);
+    game_step(&game, &input);
+    assert(game.player.vy < KOLO_JUMP_SPEED);
+    assert(game.player.enemy_bounce);
+    game.player.x = 0;
+    for (i = 0; i < 40 && game.player.enemy_bounce; ++i)
+        game_step(&game, &input);
+    assert(!game.player.enemy_bounce);
+    assets_free(&pack);
+}
+
 int main(void)
 {
     test_assets();
@@ -113,6 +191,9 @@ int main(void)
     test_movement_and_jump();
     test_collect_and_return();
     test_checkpoint_persistence();
+    test_inertia_and_rolling();
+    test_left_boundary_does_not_snap();
+    test_enemy_bounce_boost();
     puts("host gameplay tests: PASS");
     return 0;
 }

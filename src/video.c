@@ -4,6 +4,7 @@
 #include <conio.h>
 #include <dos.h>
 #include <i86.h>
+#include <stdio.h>
 #include <string.h>
 
 #define SCREEN_W 320
@@ -30,6 +31,8 @@
 #define RENDER_TITLE 2
 #define RENDER_PAUSE 3
 #define RENDER_WIN 4
+#define COTTAGE_W 48
+#define COTTAGE_H 44
 
 static unsigned char __far *scratch;
 static unsigned scratch_segment;
@@ -52,6 +55,8 @@ static int title_blink = -1;
 static short tree_origin[MAX_CAMERA + 1];
 static short cloud_origin[MAX_CAMERA + 1];
 static unsigned char tree_tall[MAX_CAMERA + 1];
+static unsigned char capture_row[SCREEN_W * 3];
+static u32 crc_table[256];
 static VideoProfile profile;
 
 static const unsigned char font[36][7] = {
@@ -195,9 +200,8 @@ static void set_display_start(unsigned base, unsigned char pan)
     outpw(0x3d4, 0x0c | (base & 0xff00));
     outpw(0x3d4, 0x0d | ((base & 0x00ff) << 8));
     (void)inp(0x3da);
-    outp(0x3c0, 0x13);
+    outp(0x3c0, 0x33);
     outp(0x3c0, (unsigned char)(pan * 2));
-    outp(0x3c0, 0x20);
 }
 
 static void wait_vblank(void)
@@ -398,12 +402,13 @@ static void draw_background(int camera, int pan, int preserve_hud)
     }
 }
 
-static void draw_cottage(int camera)
+static void draw_cottage(const AssetPack *assets, int camera)
 {
-    int x = 10 - camera;
-    int y = HUD_H + 92;
-    fill_rect(x, y, 48, 44, 21);
-    fill_rect(x + 4, y + 4, 40, 40, 26);
+    int x = assets->home.x - camera;
+    int ground = assets->home.y + KOLO_TILE_SIZE;
+    int y = HUD_H + ground - COTTAGE_H;
+    fill_rect(x, y, COTTAGE_W, COTTAGE_H, 21);
+    fill_rect(x + 4, y + 4, COTTAGE_W - 8, COTTAGE_H - 4, 26);
     fill_rect(x + 17, y + 20, 15, 24, 8);
     fill_rect(x + 20, y + 23, 9, 21, 21);
     fill_rect(x + 5, y + 13, 10, 10, 1);
@@ -421,12 +426,12 @@ static void draw_entity_plane(const GameState *game, int camera, unsigned plane)
     unsigned i;
     for (i = 0; i < assets->berry_count; ++i)
         if (!game->berry_taken[i])
-            blit_sprite_plane(assets, 3, assets->berries[i].x - camera,
+            blit_sprite_plane(assets, 4, assets->berries[i].x - camera,
                               HUD_H + assets->berries[i].y, plane);
-    blit_sprite_plane(assets, 6, assets->checkpoint.x - camera,
+    blit_sprite_plane(assets, 7, assets->checkpoint.x - camera,
                       HUD_H + assets->checkpoint.y, plane);
     for (i = 0; i < assets->enemy_count; ++i)
-        blit_sprite_plane(assets, 4 + game->enemies[i].type,
+        blit_sprite_plane(assets, 5 + game->enemies[i].type,
                           (int)(game->enemies[i].x >> KOLO_FP_SHIFT) - camera,
                           HUD_H + (int)(game->enemies[i].y >> KOLO_FP_SHIFT), plane);
     blit_sprite_plane(assets, game->player.animation,
@@ -489,7 +494,7 @@ static void draw_world(const GameState *game, int preserve_hud)
     draw_pan = (unsigned char)pan;
     if (profile_enabled) stage = platform_profile_timer_read();
     draw_background(actual_camera, pan, preserve_hud);
-    draw_cottage(camera);
+    draw_cottage(assets, camera);
     if (profile_enabled) profile.background_ticks += profile_elapsed(stage);
     if (first < 0) first = 0;
     if (last > assets->map_w) last = assets->map_w;
@@ -508,7 +513,7 @@ static void draw_hud_static(const AssetPack *assets, int pan)
 {
     fill_rect(0, 0, LOGICAL_W, HUD_H, 1);
     fill_rect(0, HUD_H - 2, LOGICAL_W, 2, 11);
-    blit_sprite(assets, 3, 8 + pan, 4);
+    blit_sprite(assets, 4, 8 + pan, 4);
     draw_text(40 + pan, 8, "OF", 23, 1);
     draw_number(58 + pan, 8, assets->berry_count, 15);
     draw_text(104 + pan, 8, "HOME", 11, 1);
@@ -566,6 +571,14 @@ int video_init(const AssetPack *assets)
         tree_origin[i] = (short)(-40 - ((i / 5) % 48));
         cloud_origin[i] = (short)(18 - ((i / 9) % 90));
         tree_tall[i] = (unsigned char)((tree_origin[i] / 48) & 1);
+    }
+    for (i = 0; i < 256; ++i) {
+        u32 value = i;
+        unsigned bit;
+        for (bit = 0; bit < 8; ++bit)
+            value = (value >> 1) ^
+                (0xedb88320UL & (0UL - (value & 1UL)));
+        crc_table[i] = value;
     }
     outp(0x3c8, 0);
     for (i = 0; i < 768; ++i) outp(0x3c9, assets->palette[i]);
@@ -706,12 +719,8 @@ static u32 scratch_crc(void)
 {
     u32 crc = 0xffffffffUL;
     u32 i;
-    int bit;
-    for (i = 0; i < 64000UL; ++i) {
-        crc ^= scratch[i];
-        for (bit = 0; bit < 8; ++bit)
-            crc = (crc >> 1) ^ (0xedb88320UL & (0UL - (crc & 1UL)));
-    }
+    for (i = 0; i < 64000UL; ++i)
+        crc = (crc >> 8) ^ crc_table[(unsigned char)(crc ^ scratch[i])];
     return crc ^ 0xffffffffUL;
 }
 
@@ -741,4 +750,50 @@ void video_profile_reset(void)
 void video_profile_get(VideoProfile *result)
 {
     *result = profile;
+}
+
+int video_display_state_valid(void)
+{
+    unsigned start;
+    unsigned char pan;
+    if (!(inp(0x3c0) & 0x20)) return 0;
+    outp(0x3d4, 0x0c);
+    start = (unsigned)inp(0x3d5) << 8;
+    outp(0x3d4, 0x0d);
+    start |= inp(0x3d5);
+    (void)inp(0x3da);
+    outp(0x3c0, 0x33);
+    pan = (unsigned char)inp(0x3c1);
+    return start == display_base && pan == (unsigned char)(display_pan * 2);
+}
+
+int video_write_ppm(const char *path, const AssetPack *assets)
+{
+    FILE *file;
+    int y;
+    reconstruct_page(display_base, display_pan);
+    file = fopen(path, "wb");
+    if (file == NULL) return 0;
+    if (fprintf(file, "P6\n%d %d\n255\n", SCREEN_W, SCREEN_H) < 0) {
+        fclose(file);
+        return 0;
+    }
+    for (y = 0; y < SCREEN_H; ++y) {
+        int x;
+        for (x = 0; x < SCREEN_W; ++x) {
+            unsigned color = scratch[(unsigned)y * SCREEN_W + x];
+            unsigned component;
+            for (component = 0; component < 3; ++component) {
+                unsigned value = assets->palette[color * 3 + component];
+                capture_row[x * 3 + component] =
+                    (unsigned char)((value << 2) | (value >> 4));
+            }
+        }
+        if (fwrite(capture_row, 1, sizeof(capture_row), file) !=
+            sizeof(capture_row)) {
+            fclose(file);
+            return 0;
+        }
+    }
+    return fclose(file) == 0;
 }

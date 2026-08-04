@@ -7,6 +7,12 @@
 #define KOLO_FP_ONE 256L
 #define KOLO_PLAYER_W 14
 #define KOLO_PLAYER_H 14
+#define KOLO_MOVE_ACCEL 32L
+#define KOLO_MOVE_BRAKE 20L
+#define KOLO_MOVE_REVERSE_ACCEL 64L
+#define KOLO_MAX_SPEED 640L
+#define KOLO_JUMP_SPEED (-850L)
+#define KOLO_ENEMY_BOUNCE_SPEED (-1000L)
 
 #define KOLO_EVENT_JUMP       0x01
 #define KOLO_EVENT_BERRY      0x02
@@ -32,6 +38,7 @@ typedef struct PlayerState {
     u8 jump_buffer;
     u8 invulnerable;
     u8 animation;
+    u8 enemy_bounce;
 } PlayerState;
 
 typedef struct EnemyState {

@@ -1,4 +1,4 @@
-.PHONY: all assets toolchain dos host-test perf-test test run dist clean
+.PHONY: all assets toolchain dos host-test perf-test test run screenshot dist clean
 
 PYTHON ?= python3
 HOST_CC ?= gcc
@@ -31,6 +31,9 @@ test: dos host-test perf-test
 
 run: dos
 	bash tools/run.sh
+
+screenshot: dos
+	bash tools/dosbox-capture.sh
 
 dist: test
 	mkdir -p dist

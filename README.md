@@ -19,8 +19,9 @@ VGA Mode X at 320×200 with 256 colours, targets a 386DX-40, and runs at a fixed
 - Enter: start, resume, or return to the title after winning
 
 There are no lives. Hazards return Kolobok to the latest checkpoint while keeping
-collected berries. Hares patrol, foxes chase when nearby, and landing on either
-animal gives a harmless bounce.
+collected berries. Movement accelerates and coasts instead of starting and stopping
+instantly. Hares patrol, foxes chase when nearby, and landing on either animal
+gives a boosted bounce.
 
 ## Build on Linux for DOS
 
@@ -80,12 +81,15 @@ The test suite performs:
 - target-side PIT profiling for background, tiles, sprites, HUD, and VGA page
   presentation, with every stage required to report data;
 - a headless DOSBox-X target self-test covering asset loading, gameplay completion,
-  title dirty updates, cached pause frames, Mode X rendering and presentation,
-  and pinned logical-frame/VRAM reference CRCs.
+  alternating-page identity, VGA display/panning register state, title dirty
+  updates, cached pause frames, Mode X rendering and presentation, and pinned
+  logical-frame/VRAM reference CRCs;
+- regression tests for movement inertia, four-frame rolling, left-edge clamping,
+  enemy-bounce boosting, and the cottage's platform-free footprint.
 
 The DOS-only self-test may also be run manually as
 `KOLOBOK.EXE -selftest`. A passing build prints
-`KOLOBOK SELFTEST PASS CRC=5BD3ECB5 VRAM=5BD3ECB5` and returns exit code zero.
+`KOLOBOK SELFTEST PASS CRC=8EF18BDB VRAM=8EF18BDB` and returns exit code zero.
 
 Run only the 386 performance regression with:
 
@@ -93,9 +97,19 @@ Run only the 386 performance regression with:
 make perf-test
 ```
 
-The current build measures about 64.2 raw rendered frames/s and 30.3 paced
+The current build measures about 68.2 raw rendered frames/s and 30.3 paced
 frames/s at 7,350 cycles. See [the performance methodology](docs/performance.md)
 for calibration, baseline, regression thresholds, and limitations.
+
+Regenerate the repository screenshot from the real DOS renderer without GUI input
+automation:
+
+```sh
+make screenshot
+```
+
+This runs `KOLOBOK.EXE -capture` in DOSBox-X, dumps the displayed Mode X page,
+and converts it to `docs/screenshot.png` on Linux.
 
 ## Project layout
 

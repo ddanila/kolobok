@@ -47,15 +47,15 @@ build:
 | --- | ---: | ---: |
 | Original C renderer, 386DX-40 profile | 17.0 fps | not sustainable |
 | Mode 13h optimized framebuffer, 386DX-40 profile | 45.4–45.5 fps | 30.3 fps |
-| Planar Mode X direct renderer, 386DX-40 profile | 64.2–64.3 fps | 30.3 fps |
+| Planar Mode X direct renderer, 386DX-40 profile | 68.2 fps | 30.3 fps |
 
-The final renderer is about 3.78 times as fast as the original and 41% faster than
+The final renderer is about 4.01 times as fast as the original and 50% faster than
 the previous optimized Mode 13h path while preserving reference frame CRC
-`5BD3ECB5`.
+`8EF18BDB`.
 
-The representative 60-frame profile measured 442,402 background ticks, 456,097
-tile ticks, 107,558 sprite ticks, 44,697 HUD ticks, and 1,069 presentation ticks.
-That averages about 6.18 ms, 6.37 ms, 1.50 ms, 0.62 ms, and 0.015 ms per frame,
+The representative 60-frame profile measured 442,717 background ticks, 449,332
+tile ticks, 107,565 sprite ticks, 44,675 HUD ticks, and 998 presentation ticks.
+That averages about 6.18 ms, 6.28 ms, 1.50 ms, 0.62 ms, and 0.014 ms per frame,
 respectively. Game simulation, loop overhead, and profiler reads are outside or
 between those buckets.
 
@@ -65,6 +65,8 @@ between those buckets.
 - Direct planar VRAM rendering; there is no whole-frame copy from conventional
   memory.
 - CRTC display-start page flipping plus 0–3 pixel attribute-controller panning.
+- Pel-panning writes retain the attribute controller's display-enable bit, avoiding
+  a transient blank during every page flip.
 - VGA-resident planar tile patterns copied with write-mode-1 latches.
 - Generic opaque-span sprites for clipped edges and 16 alignment/plane-specific
   RLE span streams per sprite for the common fully visible path.

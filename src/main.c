@@ -40,7 +40,8 @@ static int selftest(AssetPack *assets)
     GameState game;
     GameState completion;
     GameInput input;
-    u32 crc, vram_crc, title_off_crc, title_on_crc, title_stable_crc;
+    u32 crc, vram_crc, page_a_crc, page_b_crc;
+    u32 title_off_crc, title_on_crc, title_stable_crc;
     s32 saved_camera;
     int i;
     if (assets->map_w != 80 || assets->map_h != 11 || assets->berry_count != 8)
@@ -90,12 +91,30 @@ static int selftest(AssetPack *assets)
         puts("KOLOBOK SELFTEST FAIL title dirty-region cache");
         return 0;
     }
+    video_render_game(&game);
+    video_present();
+    page_a_crc = video_vram_crc();
+    if (!video_display_state_valid()) {
+        video_shutdown();
+        puts("KOLOBOK SELFTEST FAIL VGA display state A");
+        return 0;
+    }
+    video_render_game(&game);
+    video_present();
+    page_b_crc = video_vram_crc();
+    if (page_a_crc != page_b_crc || !video_display_state_valid()) {
+        video_shutdown();
+        printf("KOLOBOK SELFTEST FAIL alternating pages A=%08lX B=%08lX\n",
+            page_a_crc, page_b_crc);
+        return 0;
+    }
     saved_camera = game.camera_x;
     for (i = 0; i < 4; ++i) {
         game.camera_x = (s32)(64 + i) << KOLO_FP_SHIFT;
         video_render_game(&game);
         video_present();
-        if (video_frame_crc() != video_vram_crc()) {
+        if (video_frame_crc() != video_vram_crc() ||
+            !video_display_state_valid()) {
             video_shutdown();
             puts("KOLOBOK SELFTEST FAIL Mode X fine scroll/page flip");
             return 0;
@@ -121,8 +140,8 @@ static int selftest(AssetPack *assets)
     crc = video_frame_crc();
     vram_crc = video_vram_crc();
     video_shutdown();
-    if (crc != 0x5bd3ecb5UL || vram_crc != crc) {
-        printf("KOLOBOK SELFTEST FAIL CRC=%08lX VRAM=%08lX EXPECTED=5BD3ECB5\n",
+    if (crc != 0x8ef18bdbUL || vram_crc != crc) {
+        printf("KOLOBOK SELFTEST FAIL CRC=%08lX VRAM=%08lX EXPECTED=8EF18BDB\n",
             crc, vram_crc);
         return 0;
     }
@@ -155,7 +174,7 @@ static int benchmark(AssetPack *assets)
         game_step(&game, &input);
         game.camera_x = (s32)camera << KOLO_FP_SHIFT;
         game.player.x = (s32)(camera + 153) << KOLO_FP_SHIFT;
-        game.player.animation = (u8)(frame % 3);
+        game.player.animation = (u8)(frame % 4);
         video_render_game(&game);
         video_present();
     }
@@ -169,7 +188,7 @@ static int benchmark(AssetPack *assets)
         game_step(&game, &input);
         game.camera_x = (s32)camera << KOLO_FP_SHIFT;
         game.player.x = (s32)(camera + 153) << KOLO_FP_SHIFT;
-        game.player.animation = (u8)(frame % 3);
+        game.player.animation = (u8)(frame % 4);
         video_render_game(&game);
         video_present();
     }
@@ -182,7 +201,7 @@ static int benchmark(AssetPack *assets)
         game_step(&game, &input);
         game.camera_x = (s32)camera << KOLO_FP_SHIFT;
         game.player.x = (s32)(camera + 153) << KOLO_FP_SHIFT;
-        game.player.animation = (u8)(frame % 3);
+        game.player.animation = (u8)(frame % 4);
         video_render_game(&game);
         video_present();
     }
@@ -206,6 +225,27 @@ static int benchmark(AssetPack *assets)
     return 1;
 }
 
+static int capture_frame(AssetPack *assets)
+{
+    GameState game;
+    GameInput input;
+    int frame;
+    int written;
+    game_init(&game, assets);
+    memset(&input, 0, sizeof(input));
+    input.right = 1;
+    if (!video_init(assets)) return 0;
+    video_vsync_enable(0);
+    for (frame = 0; frame < 20; ++frame)
+        game_step(&game, &input);
+    video_render_game(&game);
+    video_present();
+    written = video_write_ppm("KOLOBOK.PPM", assets);
+    video_shutdown();
+    if (written) puts("KOLOBOK CAPTURE PASS KOLOBOK.PPM");
+    return written;
+}
+
 static void read_game_input(GameInput *input)
 {
     input->left = (u8)(key_down(KEY_LEFT) || key_down(KEY_A));
@@ -226,12 +266,14 @@ int main(int argc, char **argv)
     clock_t next_frame;
     int test_mode = 0;
     int benchmark_mode = 0;
+    int capture_mode = 0;
     int i;
 
     for (i = 1; i < argc; ++i) {
         if (stricmp(argv[i], "-nosound") == 0) sound_on = 0;
         else if (stricmp(argv[i], "-selftest") == 0) test_mode = 1;
         else if (stricmp(argv[i], "-benchmark") == 0) benchmark_mode = 1;
+        else if (stricmp(argv[i], "-capture") == 0) capture_mode = 1;
     }
     if (!assets_load(&assets, "KOLOBOK.DAT", error, sizeof(error))) {
         fprintf(stderr, "KOLOBOK: %s\n", error);
@@ -246,6 +288,11 @@ int main(int argc, char **argv)
         int passed = benchmark(&assets);
         assets_free(&assets);
         return passed ? 0 : 6;
+    }
+    if (capture_mode) {
+        int passed = capture_frame(&assets);
+        assets_free(&assets);
+        return passed ? 0 : 7;
     }
     if (!video_init(&assets)) {
         assets_free(&assets);
