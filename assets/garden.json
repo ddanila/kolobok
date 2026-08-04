@@ -1,0 +1,53 @@
+{
+  "name": "GARDEN",
+  "width": 96,
+  "height": 11,
+  "theme": "garden",
+  "cloud_seed": 12648430,
+  "required_red_berries": 6,
+  "ground_y": 9,
+  "pits": [[25, 26], [62, 63], [86, 87]],
+  "surfaces": [
+    {"material": "sand", "range": [32, 43]},
+    {"material": "sand", "range": [72, 80]}
+  ],
+  "platforms": [
+    {"y": 7, "material": "grass", "ranges": [[12, 18], [48, 54]]},
+    {"y": 6, "material": "sand", "ranges": [[34, 39], [76, 80]]}
+  ],
+  "start": [3, 8],
+  "checkpoints": [[47, 8]],
+  "exit": [93, 8],
+  "home": [2, 8],
+  "pickups": [
+    {"id": 1, "type": "red_berry", "at": [14, 6]},
+    {"id": 2, "type": "red_berry", "at": [29, 8]},
+    {"id": 3, "type": "red_berry", "at": [37, 5]},
+    {"id": 4, "type": "red_berry", "at": [52, 6]},
+    {"id": 5, "type": "red_berry", "at": [70, 8]},
+    {"id": 6, "type": "red_berry", "at": [79, 5]},
+    {"id": 7, "type": "blue_berry", "at": [22, 8]},
+    {"id": 8, "type": "blue_berry", "at": [67, 8]},
+    {"id": 9, "type": "small_pie", "at": [44, 8]},
+    {"id": 10, "type": "small_pie", "at": [84, 8]}
+  ],
+  "animals": [
+    {"id": 1, "type": "rabbit", "at": [10, 8], "patrol": [7, 18], "dialogue_id": 1, "flags": 1},
+    {"id": 2, "type": "rabbit", "at": [21, 8], "patrol": [19, 24]},
+    {"id": 3, "type": "rabbit", "at": [35, 8], "patrol": [30, 43]},
+    {"id": 4, "type": "rabbit", "at": [51, 6], "patrol": [48, 54]},
+    {"id": 5, "type": "rabbit", "at": [69, 8], "patrol": [64, 75]},
+    {"id": 6, "type": "rabbit", "at": [82, 8], "patrol": [81, 85]},
+    {"id": 7, "type": "fox", "at": [45, 8], "patrol": [40, 55]},
+    {"id": 8, "type": "fox", "at": [89, 8], "patrol": [88, 94], "dialogue_id": 4, "flags": 1}
+  ],
+  "trees": [
+    {"id": 1, "type": "birch", "at": [19, 8], "height": 3},
+    {"id": 2, "type": "oak", "at": [58, 8], "height": 4},
+    {"id": 3, "type": "birch", "at": [83, 8], "height": 3}
+  ],
+  "encounters": [
+    {"id": 1, "animal_id": 1, "dialogue_id": 1, "required": true, "correct": 1, "reward": "none", "retry_seconds": 5},
+    {"id": 4, "animal_id": 8, "dialogue_id": 4, "required": false, "correct": 0, "reward": "blue_berry", "retry_seconds": 5}
+  ]
+}

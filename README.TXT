@@ -1,29 +1,33 @@
-KOLOBOK - an MS-DOS VGA platform game
-=====================================
+KOLOBOK: EXPANDED ADVENTURE (MS-DOS)
+====================================
 
-Grandmother and Grandfather need eight forest berries. Roll away from the
-cottage, collect every berry, then return home. Hazards send Kolobok back to
-the checkpoint, but collected berries are kept. There are no limited lives.
+Collect the red berries and solve each guardian's three-choice puzzle through
+the Garden, Small Forest, and Deep Forest. Blue berries boost speed for ten
+seconds. Pies restore HP and lives. Reach home with Kolobok!
 
 CONTROLS
   Left/Right or A/D   Roll
   Space or Up         Jump (hold for a higher jump)
-  S                   Toggle PC-speaker sound
-  Escape              Pause; Escape again to quit
-  Enter               Start/resume/restart after winning
+  Enter               Talk / confirm
+  1, 2, 3 or arrows   Dialogue answers
+  M                   Toggle AdLib music
+  S                   Toggle PC-speaker effects
+  Escape              Skip intro / pause
+
+CODEWORDS
+  REPKA     Garden (skip intro)
+  TEREMOK   Small Forest
+  MOROZKO   Deep Forest
 
 FILES
-  KOLOBOK.EXE and KOLOBOK.DAT must be in the same current directory.
+  KOLOBOK.EXE, KOLOBOK.DAT, GARDEN.KLV, SFOREST.KLV and DFOREST.KLV
+  must be together. KOLOEDIT.EXE edits KLV files with the keyboard.
 
 OPTIONS
-  KOLOBOK.EXE -nosound    Disable PC-speaker effects
-  KOLOBOK.EXE -selftest   Run the automated target test and exit
-  KOLOBOK.EXE -benchmark  Measure render and 30 Hz pacing performance
-  KOLOBOK.EXE -capture    Write a deterministic KOLOBOK.PPM screenshot
+  -nosound  -nomusic  -selftest  -benchmark  -capture [scene]
 
 REQUIREMENTS
-  386DX-40 or faster, VGA, DOS 3.3 or later, and at least 160 KB of free
-  conventional memory. The game uses planar 320x200x256 Mode X.
+  386DX-40 or faster, VGA, DOS 3.3+, and AdLib-compatible OPL2 (optional).
+  If no OPL2 is detected, music is silently disabled and speaker SFX remain.
 
-Source and build instructions: https://github.com/ddanila/kolobok
-License: MIT
+License: MIT. The folk melody used by the original arrangement is public domain.

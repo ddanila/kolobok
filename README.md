@@ -1,136 +1,103 @@
-# Kolobok
+# Kolobok: Expanded Adventure
 
-![Kolobok running in planar VGA Mode X](docs/screenshot.png)
+![Kolobok in the Garden](docs/screenshot.png)
 
-Kolobok is a small MS-DOS platform game inspired by the Slavic folktale. Roll out
-from Grandmother and Grandfather's cottage, collect eight forest berries, avoid or
-bounce on the animals, and bring the berries home.
+Kolobok is a 16-bit real-mode DOS platform adventure based on the Slavic
+folktale. Its campaign runs from an animated cottage intro through the Garden,
+Small Forest, and Deep Forest to a homecoming ending. Each level requires its
+red berries and a dialogue puzzle with its guardian.
 
-The MVP is a real-mode DOS program written mostly in C. It uses unchained planar
-VGA Mode X at 320×200 with 256 colours, targets a 386DX-40, and runs at a fixed
-30 Hz gameplay update rate.
+The game targets a 386DX-40, renders directly to planar 320×200×256 Mode X,
+and updates at 30 Hz. It is cross-compiled on Linux with Open Watcom; DOSBox-X
+only runs and verifies the completed DOS binaries.
 
-## Play
+## Playing
 
-- Left/Right arrows or `A`/`D`: roll
-- Space or Up arrow: jump; hold for a higher jump
-- `S`: toggle PC-speaker sound
-- Escape: pause, then Escape again to quit
-- Enter: start, resume, or return to the title after winning
+- Left/Right or `A`/`D`: roll
+- Space or Up: jump; hold for a higher jump
+- Enter: talk to a marked nearby animal
+- `1`–`3`, or arrows and Enter: choose dialogue answers
+- `M`: toggle detected AdLib music
+- `S`: toggle PC-speaker effects
+- Escape: skip the intro or pause
 
-There are no lives. Hazards return Kolobok to the latest checkpoint while keeping
-collected berries. Movement accelerates and coasts instead of starting and stopping
-instantly. Hares patrol, foxes chase when nearby, and landing on either animal
-gives a boosted bounce.
+The title menu offers New Game, Codeword, and Quit. `REPKA` starts the Garden
+without its intro, `TEREMOK` starts the Small Forest, and `MOROZKO` starts the
+Deep Forest. Codeword games begin with 100 HP and three lives; sequential play
+carries HP and lives between levels.
 
-## Build on Linux for DOS
+Rabbit, fox, wolf, and bear contact causes 10, 25, 40, and 50 damage. Rabbit
+and fox damage cannot reduce HP below one; stronger animals can take a life.
+Pits take a life immediately. Respawning restores 100 HP at the latest
+checkpoint while preserving pickups and solved encounters.
 
-The build uses the **Linux-hosted Open Watcom v2 compiler to cross-compile for
-16-bit DOS**. DOSBox-X is only used to execute and test the completed DOS binary;
-it is never used as a compiler environment.
+Red berries open the exit. Blue berries give a refreshable ten-second speed
+boost. Small pies heal and restore up to three lives only when useful. Big pies
+heal, refill to three lives, or grant the fourth bonus life. Stomping an animal
+gives the boosted bounce and freezes it for three seconds.
 
-Required host tools are GNU Make, Bash, curl, unzip, Python 3 with Pillow, GCC,
-and DOSBox-X. On Debian-family systems the non-Watcom dependencies can usually be
-installed with:
+Command-line options are `-nosound`, `-nomusic`, `-selftest`, `-benchmark`, and
+`-capture [intro|garden|forest|deep|dialogue|frozen|gameover|home]`.
 
-```sh
-sudo apt install build-essential curl unzip python3 python3-pil dosbox-x
-```
+## Build and test
 
-Build the game:
+Install GNU Make, Bash, curl, unzip, Python 3 with Pillow, GCC, and DOSBox-X,
+then run:
 
 ```sh
 make
-```
-
-The first build downloads the Open Watcom v2 **2026-08-01 daily build**, Linux
-x64 host package, and verifies SHA-256
-`e1bc4e88fa47191118f29e53731e7f4542803c7f4c503e15d72f1f571ac0832f`.
-It is installed locally under `.tools/` and is not committed.
-
-Run in DOSBox-X:
-
-```sh
-make run
-```
-
-Create the redistributable directory:
-
-```sh
+make test
 make dist
 ```
 
-This produces `dist/KOLOBOK.EXE`, `dist/KOLOBOK.DAT`, `dist/README.TXT`, and
-`dist/LICENSE`. Copy the EXE and DAT together; the game loads `KOLOBOK.DAT` from
-its current DOS directory. Run `KOLOBOK.EXE -nosound` to disable speaker effects.
+The first build installs a pinned Linux-hosted Open Watcom toolchain under
+`.tools/`. `make test` runs host simulation, KLV/archive, JSON round-trip, CRC,
+AdLib mock-sink, DOS-native game/editor self-tests, and the 7,350-cycle Deep
+Forest performance gate. The gate requires at least 50 raw frames/s and 29.5
+paced frames/s.
 
-## Test
+`make screenshot` captures eight deterministic DOS-native states and records
+their VRAM CRCs. `make dist` creates a redistributable directory containing
+`KOLOBOK.EXE`, `KOLOEDIT.EXE`, `KOLOBOK.DAT`, and all three KLV files.
 
-```sh
-make test
-```
+## Level editor
 
-The test suite performs:
+Run `KOLOEDIT.EXE LEVEL.KLV`. If no filename is supplied, it prompts for an
+8.3 name; a missing file is initialized as an 80×11 level.
 
-- native Linux unit tests for movement, variable jumping, collection, checkpoint
-  persistence, and rejection of a corrupted data pack;
-- deterministic level, palette, planar-tile, and sprite-span validation;
-- a Linux-hosted Open Watcom cross-build for the DOS target;
-- a target-side render benchmark at the DOSBox-X 386DX-40 profile, gated at
-  50 fps raw throughput and 29.5 fps while paced at the game's 30 Hz rate;
-- target-side PIT profiling for background, tiles, sprites, HUD, and VGA page
-  presentation, with every stage required to report data;
-- a headless DOSBox-X target self-test covering asset loading, gameplay completion,
-  alternating-page identity, VGA display/panning register state, title dirty
-  updates, cached pause frames, Mode X rendering and presentation, and pinned
-  logical-frame/VRAM reference CRCs;
-- regression tests for movement inertia, four-frame rolling, left-edge clamping,
-  enemy-bounce boosting, and the cottage's platform-free footprint.
+- Arrows move the cursor and scroll
+- Tab changes Tile/Object/Marker layer
+- Page Up/Down changes the selected tool
+- Space paints or places; Delete erases
+- Enter edits the selected object subtype
+- `1`, `2`, `3` place start, checkpoint, and exit
+- F2 saves atomically through `LEVEL.TMP`; F3 validates; F4 changes theme
+- Escape opens the save/discard/cancel confirmation
 
-The DOS-only self-test may also be run manually as
-`KOLOBOK.EXE -selftest`. A passing build prints
-`KOLOBOK SELFTEST PASS CRC=8EF18BDB VRAM=8EF18BDB` and returns exit code zero.
+`KOLOEDIT.EXE -selftest` performs a create/edit/save/reload/delete cycle entirely
+inside DOSBox-X without GUI automation.
 
-Run only the 386 performance regression with:
+## Data layout
 
-```sh
-make perf-test
-```
+`KOLOBOK.DAT` version 4 is an indexed archive containing independent `INTRO`,
+`GARDEN`, `FOREST`, and `DEEP` banks. The archive exceeds 64 KiB, but every bank
+is checked to remain below 60 KiB and only the active bank is retained.
 
-The current build measures about 68.2 raw rendered frames/s and 30.3 paced
-frames/s at 7,350 cycles. See [the performance methodology](docs/performance.md)
-for calibration, baseline, regression thresholds, and limitations.
-
-Regenerate the repository screenshot from the real DOS renderer without GUI input
-automation:
+`GARDEN.KLV`, `SFOREST.KLV`, and `DFOREST.KLV` are little-endian version-4 level
+files with CRC-32 protection, fixed 11-row maps, material tiles, markers,
+pickups, animal patrol/climb data, trees, and encounters. Reviewable sources are
+under `assets/`. Convert DOS editor output back to canonical JSON with:
 
 ```sh
-make screenshot
+python3 tools/levels.py export LEVEL.KLV level.json
+python3 tools/levels.py import level.json LEVEL.KLV
 ```
 
-This runs `KOLOBOK.EXE -capture` in DOSBox-X, dumps the displayed Mode X page,
-and converts it to `docs/screenshot.png` on Linux.
-
-## Project layout
-
-- `src/` — portable game state plus DOS input, VGA, and PC-speaker backends
-- `assets/level.json` — editable one-loop forest level
-- `assets/generated/` — deterministic indexed sprite and tile sheets
-- `tools/assets.py` — palette, sprite, tile, validation, and `KOLOBOK.DAT` packer
-- `tests/` — host-side gameplay and data-integrity tests
-- `dosbox-x.conf` — 386-oriented emulator configuration
-- `docs/performance.md` — 386DX-40 benchmark method and measured results
-- `docs/art-direction.png` — folklore art-direction reference
-
-The simulation uses 24.8 fixed-point arithmetic and has no floating-point runtime
-dependency. Rendering goes directly to two VGA pages and flips them through the
-CRTC; fine horizontal scrolling uses the VGA pel-panning register. VGA latches
-copy cached planar tiles and HUD rows, sprites use alignment-specific opaque-span
-streams, and the persistent title page updates only its blinking prompt. A
-clock-based frame scheduler preserves the 30 Hz update rate. The compact data pack
-contains a 256-entry 6-bit DAC palette, pre-planar 16×16 tiles, generic and planar
-sprite spans, the map, collectibles, enemies, checkpoint, and a CRC-32 checksum.
+See [formats.md](docs/formats.md), [music.md](docs/music.md), and
+[performance.md](docs/performance.md) for the binary contracts, music
+provenance, and benchmark method.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Code, original graphics, and the original arrangement are MIT licensed. See
+[LICENSE](LICENSE). The underlying 1869 folk-song melody is public domain.

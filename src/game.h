@@ -7,69 +7,76 @@
 #define KOLO_FP_ONE 256L
 #define KOLO_PLAYER_W 14
 #define KOLO_PLAYER_H 14
-#define KOLO_MOVE_ACCEL 32L
-#define KOLO_MOVE_BRAKE 20L
-#define KOLO_MOVE_REVERSE_ACCEL 64L
-#define KOLO_MAX_SPEED 640L
 #define KOLO_JUMP_SPEED (-850L)
 #define KOLO_ENEMY_BOUNCE_SPEED (-1000L)
+#define KOLO_BLUE_FRAMES 300
+#define KOLO_FREEZE_FRAMES 90
+#define KOLO_INVULNERABLE_FRAMES 30
 
-#define KOLO_EVENT_JUMP       0x01
-#define KOLO_EVENT_BERRY      0x02
-#define KOLO_EVENT_HURT       0x04
-#define KOLO_EVENT_CHECKPOINT 0x08
-#define KOLO_EVENT_BOUNCE     0x10
-#define KOLO_EVENT_WIN        0x20
+#define KOLO_EVENT_JUMP       0x0001
+#define KOLO_EVENT_BERRY      0x0002
+#define KOLO_EVENT_HURT       0x0004
+#define KOLO_EVENT_CHECKPOINT 0x0008
+#define KOLO_EVENT_BOUNCE     0x0010
+#define KOLO_EVENT_WIN        0x0020
+#define KOLO_EVENT_BLUE       0x0040
+#define KOLO_EVENT_PIE        0x0080
+#define KOLO_EVENT_DEATH      0x0100
+#define KOLO_EVENT_DIALOGUE   0x0200
+#define KOLO_EVENT_PACIFY     0x0400
+#define KOLO_EVENT_GAME_OVER  0x0800
+
+enum EnemyAIState { KOLO_AI_PATROL, KOLO_AI_WAIT, KOLO_AI_TELEGRAPH,
+                    KOLO_AI_CHARGE, KOLO_AI_RECOVER, KOLO_AI_CLIMB,
+                    KOLO_AI_TOP_WAIT, KOLO_AI_DESCEND };
 
 typedef struct GameInput {
-    u8 left;
-    u8 right;
-    u8 jump_held;
-    u8 jump_pressed;
+    u8 left, right, jump_held, jump_pressed, talk_pressed;
 } GameInput;
 
 typedef struct PlayerState {
-    s32 x;
-    s32 y;
-    s32 vx;
-    s32 vy;
-    u8 on_ground;
-    u8 coyote;
-    u8 jump_buffer;
-    u8 invulnerable;
-    u8 animation;
-    u8 enemy_bounce;
+    s32 x, y, vx, vy;
+    u8 on_ground, coyote, jump_buffer, invulnerable, animation, enemy_bounce;
+    u8 hp, lives;
 } PlayerState;
 
 typedef struct EnemyState {
-    s32 x;
-    s32 y;
-    s32 min_x;
-    s32 max_x;
-    s32 vx;
-    u8 type;
+    s32 x, y, min_x, max_x, vx, vy, spawn_y;
+    u16 id, tree_id;
+    u8 type, state, timer, frozen, pacified, flags;
+    u16 retry;
 } EnemyState;
 
 typedef struct GameState {
     const AssetPack *assets;
     PlayerState player;
     EnemyState enemies[KOLO_MAX_ENEMIES];
-    u8 berry_taken[KOLO_MAX_BERRIES];
-    u16 berries_collected;
-    s32 checkpoint_x;
-    s32 checkpoint_y;
-    s32 camera_x;
+    u8 pickup_taken[KOLO_MAX_PICKUPS];
+    u8 encounter_solved[KOLO_MAX_ENCOUNTERS];
+    u16 red_collected;
+    u16 blue_timer;
+    u8 active_dialogue;
+    s8 active_encounter;
+    s32 checkpoint_x, checkpoint_y, camera_x;
     u32 ticks;
     u16 respawns;
-    u8 left_home;
-    u8 won;
-    u8 events;
+    u8 guardian_solved, won, game_over;
+    u16 events;
 } GameState;
 
 void game_init(GameState *game, const AssetPack *assets);
+void game_init_carry(GameState *game, const AssetPack *assets, u8 hp, u8 lives);
 void game_step(GameState *game, const GameInput *input);
 void game_respawn(GameState *game);
+void game_lose_life(GameState *game);
+void game_damage(GameState *game, u8 animal_type, int source_x);
+int game_apply_pickup(GameState *game, u8 type);
+int game_try_talk(GameState *game);
+int game_answer_dialogue(GameState *game, unsigned answer);
+int game_exit_ready(const GameState *game);
 int game_tile_solid(const GameState *game, int px, int py);
 int game_tile_hazard(const GameState *game, int px, int py);
+u8 game_surface_at(const GameState *game, int px, int py);
+int campaign_codeword_stage(const char *word);
 
 #endif

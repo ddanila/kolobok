@@ -8,20 +8,30 @@ export INCLUDE="$watcom_root/h"
 export PATH="$watcom_root/binl64:$PATH"
 
 mkdir -p "$project_root/build"
-rm -f "$project_root/build/KOLOBOK.EXE" "$project_root/build/WATCOM.LOG"
+rm -f "$project_root/build/KOLOBOK.EXE" "$project_root/build/KOLOEDIT.EXE" "$project_root/build/WATCOM.LOG"
 pushd "$project_root/build" >/dev/null
-if ! wcl -q -bt=dos -ms -3 -ox -s -i="$project_root/src" \
+if ! wcl -q -bt=dos -ms -3 -ox -s -k8192 -i="$project_root/src" \
     -fe=KOLOBOK.EXE \
     "$project_root/src/main.c" "$project_root/src/game.c" \
     "$project_root/src/assets.c" "$project_root/src/platform.c" \
-    "$project_root/src/video.c" >WATCOM.LOG 2>&1; then
+    "$project_root/src/video.c" "$project_root/src/music.c" >WATCOM.LOG 2>&1; then
     popd >/dev/null
     sed -n '1,200p' "$project_root/build/WATCOM.LOG" >&2
     exit 1
 fi
+if ! wcl -q -bt=dos -ms -3 -ox -s -k8192 -i="$project_root/src" \
+    -fe=KOLOEDIT.EXE \
+    "$project_root/src/editor.c" "$project_root/src/game.c" \
+    "$project_root/src/assets.c" "$project_root/src/platform.c" \
+    "$project_root/src/video.c" >WATCOM-EDITOR.LOG 2>&1; then
+    popd >/dev/null
+    sed -n '1,200p' "$project_root/build/WATCOM-EDITOR.LOG" >&2
+    exit 1
+fi
 popd >/dev/null
-if [[ -s "$project_root/build/WATCOM.LOG" ]]; then
+if [[ -s "$project_root/build/WATCOM.LOG" || -s "$project_root/build/WATCOM-EDITOR.LOG" ]]; then
     cat "$project_root/build/WATCOM.LOG"
+    cat "$project_root/build/WATCOM-EDITOR.LOG"
     echo "Open Watcom produced diagnostics" >&2
     exit 1
 fi

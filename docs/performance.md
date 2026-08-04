@@ -19,7 +19,7 @@ profile result.
 ## Target-side workload
 
 `KOLOBOK.EXE -benchmark` uses the DOS runtime clock to measure 60 representative
-frames whose camera positions traverse the complete level. Every frame performs
+Deep Forest frames whose camera positions traverse the complete 160-tile level. Every frame performs
 a gameplay update, direct-to-VRAM background and HUD rendering, visible terrain
 and entity rasterization, and a hardware page flip.
 
@@ -47,15 +47,16 @@ build:
 | --- | ---: | ---: |
 | Original C renderer, 386DX-40 profile | 17.0 fps | not sustainable |
 | Mode 13h optimized framebuffer, 386DX-40 profile | 45.4–45.5 fps | 30.3 fps |
-| Planar Mode X direct renderer, 386DX-40 profile | 68.2 fps | 30.3 fps |
+| MVP planar Mode X renderer | 68.2 fps | 30.3 fps |
+| Expanded Deep Forest worst case | 57.5 fps | 29.5 fps |
 
-The final renderer is about 4.01 times as fast as the original and 50% faster than
-the previous optimized Mode 13h path while preserving reference frame CRC
-`8EF18BDB`.
+The expanded worst-case workload remains 91% above its 30 Hz frame deadline and
+14.8% above the raw regression floor while drawing the larger enemy set, three
+tree types, expanded HUD, and material art.
 
-The representative 60-frame profile measured 442,717 background ticks, 449,332
-tile ticks, 107,565 sprite ticks, 44,675 HUD ticks, and 998 presentation ticks.
-That averages about 6.18 ms, 6.28 ms, 1.50 ms, 0.62 ms, and 0.014 ms per frame,
+The representative 60-frame expanded profile measured 459,548 background ticks,
+397,242 tile ticks, 181,293 sprite ticks, 153,561 HUD ticks, and 992 presentation
+ticks. That averages about 6.42 ms, 5.55 ms, 2.53 ms, 2.15 ms, and 0.014 ms per frame,
 respectively. Game simulation, loop overhead, and profiler reads are outside or
 between those buckets.
 
@@ -70,8 +71,8 @@ between those buckets.
 - VGA-resident planar tile patterns copied with write-mode-1 latches.
 - Generic opaque-span sprites for clipped edges and 16 alignment/plane-specific
   RLE span streams per sprite for the common fully visible path.
-- Four cached, panning-aware static HUD variants; only the collected count is
-  drawn dynamically.
+- Four cached, panning-aware static HUD variants; HP, lives, red count and blue
+  boost time are drawn dynamically.
 - A cached title screen whose blinking prompt is restored and redrawn as a dirty
   region; unchanged pause and victory frames are retained.
 - Precomputed tree/cloud origins and tree variants remove division and modulo
@@ -86,14 +87,17 @@ of unchained VGA and page flipping in the
 
 ## Memory use
 
-The current data pack is 13,355 bytes and the DOS executable is about 27 KiB. The
+The v4 archive is about 89 KiB, but each indexed active bank is about 22 KiB and
+stays below the enforced 60 KiB limit. The game and editor executables are about
+39 KiB and 41 KiB. The
 renderer allocates one 64,000-byte conventional-memory scratch image for CRC test
 readback; normal drawing does not use it as a back buffer. Together with the
 loaded program, assets, game state, and stack, active conventional-memory data is
-well below 150 KiB. Future caches may deliberately use more conventional memory
+well below 200 KiB. The DOS programs use an explicit 8 KiB stack after expansion
+of the level and campaign state. Future caches may deliberately use more conventional memory
 when profiling shows a useful gain; 400 KiB is not treated as a hard ceiling.
 
 VGA memory is the tighter fixed resource. The two 16,400-address game pages,
-title page, four HUD variants, prompt backup, and tile patterns occupy 58,016
-addresses in each of four planes, or 232,064 of the VGA's 262,144 bytes. The
+title page, four HUD variants, prompt backup, and eleven tile patterns occupy
+58,336 addresses in each of four planes, or 233,344 of the VGA's 262,144 bytes. The
 remaining VGA space is intentionally left available for small future caches.

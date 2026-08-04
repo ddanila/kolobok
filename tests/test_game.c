@@ -5,195 +5,88 @@
 #include <stdio.h>
 #include <string.h>
 
-static void test_assets(void)
+static void load(AssetPack *pack,const char*bank,const char*level)
 {
-    AssetPack pack;
-    char error[80];
-    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
-    assert(pack.map_w == 80);
-    assert(pack.map_h == 11);
-    assert(pack.berry_count == 8);
-    assert(pack.enemy_count == 4);
-    assert(pack.tile_count == 6);
-    assert(pack.sprite_count == 9);
-    {
-        int x, y;
-        for (y = 5; y < 9; ++y)
-            for (x = 1; x <= 5; ++x)
-                assert(pack.map[y * pack.map_w + x] == 0);
-    }
-    assets_free(&pack);
+    char error[96];assert(assets_load_bank(pack,"build/KOLOBOK.DAT",bank,level,error,sizeof(error)));
 }
 
-static void test_asset_checksum_rejection(void)
+static void step(GameState*g,unsigned count)
 {
-    FILE *source = fopen("build/KOLOBOK.DAT", "rb");
-    FILE *target = fopen("build/CORRUPT.DAT", "wb");
-    AssetPack pack;
-    char error[80];
-    int byte;
-    long offset = 0;
-    assert(source != NULL && target != NULL);
-    while ((byte = fgetc(source)) != EOF) {
-        if (offset == 100) byte ^= 1;
-        assert(fputc(byte, target) != EOF);
-        ++offset;
-    }
-    assert(fclose(source) == 0);
-    assert(fclose(target) == 0);
-    assert(!assets_load(&pack, "build/CORRUPT.DAT", error, sizeof(error)));
-    assert(strstr(error, "checksum") != NULL);
-    assert(remove("build/CORRUPT.DAT") == 0);
+    GameInput input={0,0,0,0,0};while(count--)game_step(g,&input);
 }
 
-static void test_movement_and_jump(void)
+static void test_assets_and_levels(void)
 {
-    AssetPack pack;
-    GameState game;
-    GameInput input;
-    char error[80];
-    int i;
-    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
-    game_init(&game, &pack);
-    memset(&input, 0, sizeof(input));
-    input.right = 1;
-    for (i = 0; i < 18; ++i) game_step(&game, &input);
-    assert(game.player.vx > 0);
-    assert((game.player.x >> KOLO_FP_SHIFT) > pack.home.x + 36);
-    input.jump_pressed = 1;
-    input.jump_held = 1;
-    game_step(&game, &input);
-    assert((game.events & KOLO_EVENT_JUMP) != 0);
-    assert(game.player.vy < 0);
-    input.jump_pressed = 0;
-    for (i = 0; i < 6; ++i) game_step(&game, &input);
-    input.jump_held = 0;
-    game_step(&game, &input);
-    assert(game.player.vy >= -350);
-    assets_free(&pack);
+    AssetPack p;load(&p,"GARDEN","build/GARDEN.KLV");
+    assert(p.map_w==96&&p.map_h==11&&p.tile_count==11&&p.sprite_count==15);
+    assert(p.level.required_red==6&&p.level.pickup_count==10&&p.level.animal_count==8);
+    assets_free(&p);load(&p,"FOREST","build/SFOREST.KLV");assert(p.map_w==128&&p.level.required_red==8);assets_free(&p);
+    load(&p,"DEEP","build/DFOREST.KLV");assert(p.map_w==160&&p.level.required_red==10&&p.level.animal_count==9);assets_free(&p);
 }
 
-static void test_collect_and_return(void)
+static void test_crc_rejection(void)
 {
-    AssetPack pack;
-    GameState game;
-    char error[80];
-    unsigned i;
-    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
-    game_init(&game, &pack);
-    game.left_home = 1;
-    for (i = 0; i < pack.berry_count; ++i) {
-        game.berry_taken[i] = 1;
-        ++game.berries_collected;
-    }
-    game.player.x = (s32)(pack.home.x + 20) << KOLO_FP_SHIFT;
-    game_step(&game, &(GameInput){0, 0, 0, 0});
-    assert(game.won);
-    assert((game.events & KOLO_EVENT_WIN) != 0);
-    assets_free(&pack);
+    FILE*s=fopen("build/GARDEN.KLV","rb"),*t=fopen("build/BAD.KLV","wb");int c;long n=0;AssetPack p;char error[96];
+    assert(s&&t);while((c=fgetc(s))!=EOF){if(n++==100)c^=1;fputc(c,t);}fclose(s);fclose(t);
+    assert(!assets_load_bank(&p,"build/KOLOBOK.DAT","GARDEN","build/BAD.KLV",error,sizeof(error)));
+    assert(strstr(error,"checksum")!=0);remove("build/BAD.KLV");
 }
 
-static void test_checkpoint_persistence(void)
+static void test_surface_physics(void)
 {
-    AssetPack pack;
-    GameState game;
-    char error[80];
-    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
-    game_init(&game, &pack);
-    game.berry_taken[0] = 1;
-    game.berries_collected = 1;
-    game.checkpoint_x = (s32)pack.checkpoint.x << KOLO_FP_SHIFT;
-    game.checkpoint_y = (s32)(pack.checkpoint.y + 2) << KOLO_FP_SHIFT;
-    game_respawn(&game);
-    assert(game.berry_taken[0] == 1);
-    assert(game.berries_collected == 1);
-    assert(game.player.x == game.checkpoint_x);
-    assert(game.player.invulnerable == 30);
-    assets_free(&pack);
+    AssetPack p;GameState g;GameInput right={0,1,0,0,0};load(&p,"GARDEN","build/GARDEN.KLV");game_init(&g,&p);
+    g.player.invulnerable=255;g.player.on_ground=1;g.player.x=(s32)(6*16)<<8;g.player.y=(s32)(9*16-14)<<8;g.player.vx=0;game_step(&g,&right);assert(g.player.vx==32);
+    g.player.on_ground=1;g.player.x=(s32)(33*16)<<8;g.player.y=(s32)(9*16-14)<<8;g.player.vx=0;game_step(&g,&right);assert(g.player.vx==24);
+    g.player.on_ground=0;g.player.x=(s32)(33*16)<<8;g.player.y=(s32)(7*16)<<8;g.player.vx=0;game_step(&g,&right);assert(g.player.vx==16);assets_free(&p);
+    load(&p,"FOREST","build/SFOREST.KLV");game_init(&g,&p);g.player.on_ground=1;g.player.x=(s32)(66*16)<<8;g.player.y=(s32)(9*16-14)<<8;g.player.vx=0;game_step(&g,&right);assert(g.player.vx==16);assets_free(&p);
 }
 
-static void test_inertia_and_rolling(void)
+static void test_boost_and_pies(void)
 {
-    AssetPack pack;
-    GameState game;
-    GameInput input = {0, 1, 0, 0};
-    char error[80];
-    unsigned seen_frames = 0;
-    int i;
-    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
-    game_init(&game, &pack);
-    for (i = 0; i < 20; ++i) {
-        game_step(&game, &input);
-        seen_frames |= 1U << game.player.animation;
-        if (i == 0) assert(game.player.vx == KOLO_MOVE_ACCEL);
-    }
-    assert(game.player.vx == KOLO_MAX_SPEED);
-    assert(seen_frames == 0x0f);
-    memset(&input, 0, sizeof(input));
-    game_step(&game, &input);
-    assert(game.player.vx == KOLO_MAX_SPEED - KOLO_MOVE_BRAKE);
-    for (i = 0; i < 31; ++i) game_step(&game, &input);
-    assert(game.player.vx == 0);
-    assets_free(&pack);
+    AssetPack p;GameState g;GameInput right={0,1,0,0,0};load(&p,"GARDEN","build/GARDEN.KLV");game_init(&g,&p);
+    assert(game_apply_pickup(&g,KOLO_PICKUP_BLUE));assert(g.blue_timer==300);g.player.on_ground=1;g.player.vx=0;game_step(&g,&right);assert(g.player.vx==40&&g.blue_timer==299);
+    step(&g,10);game_apply_pickup(&g,KOLO_PICKUP_BLUE);assert(g.blue_timer==300);step(&g,300);assert(g.blue_timer==0);
+    g.player.hp=100;g.player.lives=3;assert(!game_apply_pickup(&g,KOLO_PICKUP_SMALL_PIE));g.player.hp=50;assert(game_apply_pickup(&g,KOLO_PICKUP_SMALL_PIE)&&g.player.hp==100&&g.player.lives==3);
+    g.player.hp=50;g.player.lives=2;game_apply_pickup(&g,KOLO_PICKUP_SMALL_PIE);assert(g.player.hp==100&&g.player.lives==3);
+    g.player.lives=3;game_apply_pickup(&g,KOLO_PICKUP_BIG_PIE);assert(g.player.lives==4);g.player.lives=1;game_apply_pickup(&g,KOLO_PICKUP_BIG_PIE);assert(g.player.lives==3);assets_free(&p);
 }
 
-static void test_left_boundary_does_not_snap(void)
+static void test_damage_lives_checkpoint(void)
 {
-    AssetPack pack;
-    GameState game;
-    GameInput input = {1, 0, 0, 0};
-    char error[80];
-    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
-    game_init(&game, &pack);
-    game.player.x = 0;
-    game.player.vx = -KOLO_MOVE_ACCEL;
-    game_step(&game, &input);
-    assert(game.player.x == 0);
-    assert(game.player.vx == 0);
-    assets_free(&pack);
+    AssetPack p;GameState g;load(&p,"GARDEN","build/GARDEN.KLV");game_init(&g,&p);g.player.invulnerable=0;
+    game_damage(&g,KOLO_ANIMAL_RABBIT,1000);assert(g.player.hp==90&&g.player.invulnerable==30&&g.player.vx==-480&&g.player.vy==-300);
+    g.player.invulnerable=0;g.player.hp=20;game_damage(&g,KOLO_ANIMAL_FOX,0);assert(g.player.hp==1&&g.player.lives==3);
+    g.checkpoint_x=(s32)40*16<<8;g.checkpoint_y=(s32)130<<8;g.pickup_taken[0]=1;g.red_collected=1;g.blue_timer=200;g.player.invulnerable=0;g.player.hp=30;
+    game_damage(&g,KOLO_ANIMAL_WOLF,0);assert(g.player.lives==2&&g.player.hp==100&&g.player.x==g.checkpoint_x&&g.red_collected==1&&g.pickup_taken[0]&&g.blue_timer==0);
+    g.player.invulnerable=0;g.player.hp=40;g.player.lives=1;game_damage(&g,KOLO_ANIMAL_BEAR,0);assert(g.game_over&&g.player.lives==0);assets_free(&p);
 }
 
-static void test_enemy_bounce_boost(void)
+static void test_ai_freeze(void)
 {
-    AssetPack pack;
-    GameState game;
-    GameInput input = {0, 0, 0, 0};
-    EnemyState *enemy;
-    char error[80];
-    int i;
-    assert(assets_load(&pack, "build/KOLOBOK.DAT", error, sizeof(error)));
-    game_init(&game, &pack);
-    enemy = &game.enemies[0];
-    enemy->vx = 0;
-    game.player.x = enemy->x;
-    game.player.y = enemy->y -
-        ((s32)KOLO_PLAYER_H << KOLO_FP_SHIFT);
-    game.player.vy = 400;
-    game.player.on_ground = 0;
-    game_step(&game, &input);
-    assert((game.events & KOLO_EVENT_BOUNCE) != 0);
-    assert(game.player.vy == KOLO_ENEMY_BOUNCE_SPEED);
-    assert(game.player.enemy_bounce);
-    game_step(&game, &input);
-    assert(game.player.vy < KOLO_JUMP_SPEED);
-    assert(game.player.enemy_bounce);
-    game.player.x = 0;
-    for (i = 0; i < 40 && game.player.enemy_bounce; ++i)
-        game_step(&game, &input);
-    assert(!game.player.enemy_bounce);
-    assets_free(&pack);
+    AssetPack p;GameState g;unsigned i;load(&p,"GARDEN","build/GARDEN.KLV");game_init(&g,&p);g.player.x=0;g.player.y=0;
+    for(i=0;i<30;++i)step(&g,1);
+    assert(g.enemies[0].state==KOLO_AI_WAIT&&g.enemies[0].timer==0);
+    step(&g,1);assert(g.enemies[0].state==KOLO_AI_PATROL&&g.enemies[0].vy==-600);
+    g.enemies[0].frozen=90;{s32 x=g.enemies[0].x;step(&g,1);assert(g.enemies[0].frozen==89&&g.enemies[0].x==x);}assets_free(&p);
+    load(&p,"FOREST","build/SFOREST.KLV");game_init(&g,&p);g.player.x=g.enemies[6].x;g.player.y=g.enemies[6].y;g.player.invulnerable=255;step(&g,1);assert(g.enemies[6].state==KOLO_AI_TELEGRAPH&&g.enemies[6].timer==15);for(i=0;i<15;++i)step(&g,1);assert(g.enemies[6].state==KOLO_AI_CHARGE&&(g.enemies[6].vx==800||g.enemies[6].vx==-800));assets_free(&p);
+    load(&p,"DEEP","build/DFOREST.KLV");game_init(&g,&p);g.player.x=0;g.player.y=0;for(i=0;i<400&&g.enemies[6].state!=KOLO_AI_CLIMB;++i)step(&g,1);assert(g.enemies[6].state==KOLO_AI_CLIMB||g.enemies[6].state==KOLO_AI_TOP_WAIT);assets_free(&p);
+}
+
+static void test_dialogue_and_gate(void)
+{
+    AssetPack p;GameState g;unsigned guardian=0,i;load(&p,"GARDEN","build/GARDEN.KLV");game_init(&g,&p);
+    for(i=0;i<p.level.animal_count;++i)if(p.level.animals[i].id==p.level.encounters[0].animal_id)guardian=i;
+    g.player.x=g.enemies[guardian].x;g.player.y=g.enemies[guardian].y;g.player.invulnerable=0;assert(game_try_talk(&g));assert(game_answer_dialogue(&g,0)==-1);assert(g.enemies[guardian].retry==150&&!g.guardian_solved);
+    g.enemies[guardian].retry=0;g.player.x=g.enemies[guardian].x;g.player.y=g.enemies[guardian].y;g.player.invulnerable=0;assert(game_try_talk(&g));assert(game_answer_dialogue(&g,1)==1);assert(g.guardian_solved&&g.enemies[guardian].pacified);
+    assert(!game_exit_ready(&g));g.red_collected=6;assert(game_exit_ready(&g));assets_free(&p);
+}
+
+static void test_codewords(void)
+{
+    assert(campaign_codeword_stage("REPKA")==0);assert(campaign_codeword_stage("teremok")==1);assert(campaign_codeword_stage("Morozko")==2);assert(campaign_codeword_stage("bogus")==-1);
 }
 
 int main(void)
 {
-    test_assets();
-    test_asset_checksum_rejection();
-    test_movement_and_jump();
-    test_collect_and_return();
-    test_checkpoint_persistence();
-    test_inertia_and_rolling();
-    test_left_boundary_does_not_snap();
-    test_enemy_bounce_boost();
-    puts("host gameplay tests: PASS");
-    return 0;
+    test_assets_and_levels();test_crc_rejection();test_surface_physics();test_boost_and_pies();test_damage_lives_checkpoint();test_ai_freeze();test_dialogue_and_gate();test_codewords();puts("host gameplay tests: PASS");return 0;
 }

@@ -25,7 +25,7 @@
 #define PROMPT_H 16
 #define TILE_CACHE_BASE (PROMPT_BACKUP_BASE + PROMPT_W_BYTES * PROMPT_H)
 #define TILE_CACHE_BYTES 64
-#define MAX_CAMERA 960
+#define MAX_CAMERA 3776
 #define RENDER_NONE 0
 #define RENDER_GAME 1
 #define RENDER_TITLE 2
@@ -53,7 +53,6 @@ static int title_cache_valid;
 static int hud_cache_valid;
 static int title_blink = -1;
 static short tree_origin[MAX_CAMERA + 1];
-static short cloud_origin[MAX_CAMERA + 1];
 static unsigned char tree_tall[MAX_CAMERA + 1];
 static unsigned char capture_row[SCREEN_W * 3];
 static u32 crc_table[256];
@@ -377,35 +376,51 @@ static void blit_sprite(const AssetPack *assets, unsigned sprite, int x, int y)
     }
 }
 
-static void draw_background(int camera, int pan, int preserve_hud)
+static void draw_cloud(int x,int y,unsigned shape,unsigned char color)
+{
+    int wide=18+(int)(shape&3)*4;
+    int high=3+(int)((shape>>1)&1);
+    fill_rect(x,y,wide,high,color);
+    fill_rect(x+3+(int)(shape&1)*3,y-high,wide/2,high,color);
+    if(shape>=3)fill_rect(x+wide/2,y-high-2,wide/3,3,color);
+}
+
+static void draw_background(int camera, int pan, int preserve_hud,
+                            const LevelData *level)
 {
     int x, base, tall;
+    unsigned char sky=level->theme==KOLO_THEME_GARDEN?2:level->theme==KOLO_THEME_FOREST?3:1;
+    unsigned char horizon=level->theme==KOLO_THEME_GARDEN?3:level->theme==KOLO_THEME_FOREST?5:24;
+    unsigned spacing=level->theme==KOLO_THEME_GARDEN?68:level->theme==KOLO_THEME_FOREST?104:184;
     fill_rect(0, preserve_hud ? HUD_H : 0, LOGICAL_W,
-              SCREEN_H - (preserve_hud ? HUD_H : 0), 2);
-    fill_rect(0, 112, LOGICAL_W, 88, 3);
+              SCREEN_H - (preserve_hud ? HUD_H : 0), sky);
+    fill_rect(0, 112, LOGICAL_W, 88, horizon);
     if (camera < 0) camera = 0;
     if (camera > MAX_CAMERA) camera = MAX_CAMERA;
-    x = tree_origin[camera];
-    tall = tree_tall[camera];
-    while (x < SCREEN_W + 48) {
-        int h = 42 + tall * 12;
-        fill_rect(x + pan + 20, 112 - h, 7, h, 5);
-        for (base = 0; base < 4; ++base)
-            fill_rect(x + pan + 8 + base * 4, 78 - base * 7,
-                      31 - base * 8, 8, 5);
-        if (!(x > -48 && x < 0)) tall ^= 1;
-        x += 48;
+    if(level->theme!=KOLO_THEME_GARDEN){
+        x = tree_origin[camera];tall = tree_tall[camera];
+        while (x < SCREEN_W + 48) {
+            int h = 42 + tall * 12;
+            fill_rect(x + pan + 20, 112 - h, 7, h, level->theme==KOLO_THEME_DEEP?24:5);
+            for (base = 0; base < 4; ++base)
+                fill_rect(x + pan + 8 + base * 4, 78 - base * 7,
+                          31 - base * 8, 8, 5);
+            if (!(x > -48 && x < 0)) tall ^= 1;x += 48;
+        }
     }
-    for (x = cloud_origin[camera]; x < SCREEN_W; x += 90) {
-        fill_rect(x + pan, 36, 25, 4, 4);
-        fill_rect(x + pan + 6, 32, 14, 4, 4);
+    x=(int)((level->cloud_seed&63UL)-(unsigned)(camera/(level->theme==KOLO_THEME_GARDEN?8:12)));
+    while(x<0)x+=(int)spacing;
+    for (; x < SCREEN_W; x += (int)spacing) {
+        unsigned shape=(unsigned)((level->cloud_seed+(u32)(x+camera)/spacing)%6UL);
+        int y=27+(int)((level->cloud_seed>>(shape+1))&23UL);
+        draw_cloud(x+pan,y,shape,level->theme==KOLO_THEME_DEEP?22:4);
     }
 }
 
 static void draw_cottage(const AssetPack *assets, int camera)
 {
-    int x = assets->home.x - camera;
-    int ground = assets->home.y + KOLO_TILE_SIZE;
+    int x = assets->level.home.x * KOLO_TILE_SIZE - camera;
+    int ground = assets->level.home.y * KOLO_TILE_SIZE + KOLO_TILE_SIZE;
     int y = HUD_H + ground - COTTAGE_H;
     fill_rect(x, y, COTTAGE_W, COTTAGE_H, 21);
     fill_rect(x + 4, y + 4, COTTAGE_W - 8, COTTAGE_H - 4, 26);
@@ -420,20 +435,55 @@ static void draw_cottage(const AssetPack *assets, int camera)
     fill_rect(x + 8, y - 17, 32, 8, 25);
 }
 
+static void draw_level_trees(const AssetPack *assets, int camera)
+{
+    unsigned i;
+    for (i = 0; i < assets->level.tree_count; ++i) {
+        const KoloTree *tree = &assets->level.trees[i];
+        int x = tree->x * 16 - camera;
+        int base = HUD_H + tree->y * 16 + 16;
+        int h = tree->height * 12;
+        unsigned char trunk = tree->type == KOLO_TREE_BIRCH ? 23 : 9;
+        unsigned char leaf = tree->type == KOLO_TREE_FIR ? 5 : 6;
+        if (x < -24 || x > LOGICAL_W + 8) continue;
+        fill_rect(x + 7, base - h, 4, h, trunk);
+        if (tree->type == KOLO_TREE_FIR) {
+            int row;
+            for (row = 0; row < tree->height; ++row)
+                fill_rect(x + 1 + row, base - h + row * 8, 17 - row * 2, 7, leaf);
+        } else {
+            fill_rect(x - 2, base - h - 2, 23, 10, leaf);
+            fill_rect(x + 1, base - h - 8, 17, 9, leaf);
+        }
+    }
+}
+
 static void draw_entity_plane(const GameState *game, int camera, unsigned plane)
 {
     const AssetPack *assets = game->assets;
+    const LevelData *level = &assets->level;
     unsigned i;
-    for (i = 0; i < assets->berry_count; ++i)
-        if (!game->berry_taken[i])
-            blit_sprite_plane(assets, 4, assets->berries[i].x - camera,
-                              HUD_H + assets->berries[i].y, plane);
-    blit_sprite_plane(assets, 7, assets->checkpoint.x - camera,
-                      HUD_H + assets->checkpoint.y, plane);
-    for (i = 0; i < assets->enemy_count; ++i)
-        blit_sprite_plane(assets, 5 + game->enemies[i].type,
+    static const unsigned pickup_sprite[4] = {4, 11, 12, 13};
+    static const unsigned animal_sprite[4] = {5, 6, 9, 10};
+    for (i = 0; i < level->pickup_count; ++i)
+        if (!game->pickup_taken[i])
+            blit_sprite_plane(assets, pickup_sprite[level->pickups[i].type],
+                              level->pickups[i].x * 16 + 3 - camera,
+                              HUD_H + level->pickups[i].y * 16 + 2, plane);
+    for (i = 0; i < level->checkpoint_count; ++i)
+        blit_sprite_plane(assets, 7, level->checkpoints[i].x * 16 - camera,
+                          HUD_H + level->checkpoints[i].y * 16, plane);
+    blit_sprite_plane(assets, 7, level->exit.x * 16 - camera,
+                      HUD_H + level->exit.y * 16, plane);
+    for (i = 0; i < level->animal_count; ++i) {
+        blit_sprite_plane(assets, animal_sprite[game->enemies[i].type],
                           (int)(game->enemies[i].x >> KOLO_FP_SHIFT) - camera,
                           HUD_H + (int)(game->enemies[i].y >> KOLO_FP_SHIFT), plane);
+        if (game->enemies[i].frozen)
+            blit_sprite_plane(assets, 14,
+                          (int)(game->enemies[i].x >> KOLO_FP_SHIFT) - camera,
+                          HUD_H + (int)(game->enemies[i].y >> KOLO_FP_SHIFT), plane);
+    }
     blit_sprite_plane(assets, game->player.animation,
                       (int)(game->player.x >> KOLO_FP_SHIFT) - camera,
                       HUD_H + (int)(game->player.y >> KOLO_FP_SHIFT), plane);
@@ -493,8 +543,10 @@ static void draw_world(const GameState *game, int preserve_hud)
     u16 stage;
     draw_pan = (unsigned char)pan;
     if (profile_enabled) stage = platform_profile_timer_read();
-    draw_background(actual_camera, pan, preserve_hud);
-    draw_cottage(assets, camera);
+    draw_background(actual_camera, pan, preserve_hud, &assets->level);
+    if (assets->level.theme == KOLO_THEME_GARDEN || assets->level.theme == KOLO_THEME_DEEP)
+        draw_cottage(assets, camera);
+    draw_level_trees(assets, camera);
     if (profile_enabled) profile.background_ticks += profile_elapsed(stage);
     if (first < 0) first = 0;
     if (last > assets->map_w) last = assets->map_w;
@@ -515,9 +567,10 @@ static void draw_hud_static(const AssetPack *assets, int pan)
     fill_rect(0, HUD_H - 2, LOGICAL_W, 2, 11);
     blit_sprite(assets, 4, 8 + pan, 4);
     draw_text(40 + pan, 8, "OF", 23, 1);
-    draw_number(58 + pan, 8, assets->berry_count, 15);
-    draw_text(104 + pan, 8, "HOME", 11, 1);
-    draw_text(245 + pan, 8, "S SOUND", 23, 1);
+    draw_number(58 + pan, 8, assets->level.required_red, 15);
+    draw_text(92 + pan, 8, "HP", 11, 1);
+    draw_text(155 + pan, 8, "L", 11, 1);
+    draw_text(194 + pan, 8, "M MUSIC S SFX", 23, 1);
 }
 
 static void build_hud_cache(const AssetPack *assets)
@@ -540,7 +593,13 @@ static void draw_hud(const GameState *game)
     if (!hud_cache_valid) build_hud_cache(game->assets);
     latch_copy(HUD_CACHE_BASE + draw_pan * HUD_CACHE_BYTES,
                draw_base, HUD_CACHE_BYTES);
-    draw_number(28 + draw_pan, 8, game->berries_collected, 15);
+    draw_number(28 + draw_pan, 8, game->red_collected, 15);
+    draw_number(110 + draw_pan, 8, game->player.hp, 15);
+    draw_number(169 + draw_pan, 8, game->player.lives, 15);
+    if (game->blue_timer) {
+        draw_text(181 + draw_pan, 8, "B", 28, 1);
+        draw_number(187 + draw_pan, 8, (game->blue_timer + 29) / 30, 28);
+    }
 }
 
 static void backup_prompt(void)
@@ -565,11 +624,16 @@ int video_init(const AssetPack *assets)
 {
     unsigned i;
     if (_dos_allocmem(4000, &scratch_segment) != 0) return 0;
+#ifdef KOLO_DEBUG_LOAD
+    puts("VIDEO scratch");
+#endif
     scratch = (unsigned char __far *)MK_FP(scratch_segment, 0);
     set_mode_x();
+#ifdef KOLO_DEBUG_LOAD
+    puts("VIDEO mode");
+#endif
     for (i = 0; i <= MAX_CAMERA; ++i) {
         tree_origin[i] = (short)(-40 - ((i / 5) % 48));
-        cloud_origin[i] = (short)(18 - ((i / 9) % 90));
         tree_tall[i] = (unsigned char)((tree_origin[i] / 48) & 1);
     }
     for (i = 0; i < 256; ++i) {
@@ -580,12 +644,21 @@ int video_init(const AssetPack *assets)
                 (0xedb88320UL & (0UL - (value & 1UL)));
         crc_table[i] = value;
     }
+#ifdef KOLO_DEBUG_LOAD
+    puts("VIDEO tables");
+#endif
     outp(0x3c8, 0);
     for (i = 0; i < 768; ++i) outp(0x3c9, assets->palette[i]);
     build_tile_cache(assets);
+#ifdef KOLO_DEBUG_LOAD
+    puts("VIDEO cache");
+#endif
     draw_base = display_base = GAME_PAGE_0;
     draw_pan = display_pan = 0;
     set_display_start(display_base, display_pan);
+#ifdef KOLO_DEBUG_LOAD
+    puts("VIDEO display");
+#endif
     return 1;
 }
 
@@ -670,6 +743,30 @@ void video_render_title(const AssetPack *assets, u32 ticks)
     render_state = RENDER_TITLE;
 }
 
+void video_render_menu(const AssetPack *assets, u32 ticks, unsigned selection)
+{
+    static const char *items[3] = {"NEW GAME", "CODEWORD", "QUIT"};
+    unsigned i;
+    video_render_title(assets, ticks);
+    draw_base = TITLE_PAGE;
+    fill_rect(76, 119, 172, 49, 5);
+    for (i = 0; i < 3; ++i) {
+        draw_text(104, 122 + i * 14, items[i], i == selection ? 31 : 23, 1);
+        if (i == selection) draw_text(91, 122 + i * 14, "1", 14, 1);
+    }
+}
+
+void video_render_codeword(const AssetPack *assets, const char *word, int invalid)
+{
+    video_render_title(assets, 0);
+    draw_base = TITLE_PAGE;
+    fill_rect(58, 112, 204, 57, 5);
+    draw_text(76, 119, "ENTER CODEWORD", 15, 1);
+    fill_rect(79, 135, 162, 14, 1);
+    draw_text(91, 139, word, invalid ? 18 : 31, 1);
+    draw_text(67, 155, "ENTER OK  ESC BACK", 23, 1);
+}
+
 static void overlay_box(unsigned char color)
 {
     fill_rect(54 + draw_pan, 61, 212, 78, 1);
@@ -696,6 +793,131 @@ void video_render_win(const GameState *game)
     draw_text(103 + draw_pan, 92, "WELL DONE", 15, 2);
     draw_text(88 + draw_pan, 119, "ENTER TO PLAY AGAIN", 23, 1);
     render_state = RENDER_WIN;
+}
+
+void video_render_dialogue(const GameState *game, unsigned selection)
+{
+    static const char *questions[6] = {
+        "MANY COATS NO BUTTONS",
+        "OAK LEFT BIRCH RIGHT SAFE PATH",
+        "PUT THE SONG LINES IN ORDER",
+        "RED TAIL QUICK FEET WHO AM I",
+        "LONG EARS SHORT TAIL WHO AM I",
+        "WHO HOWLS UNDER THE MOON"
+    };
+    static const char *answers[6][3] = {
+        {"1 TURNIP", "2 CABBAGE", "3 ONION"},
+        {"1 LEFT", "2 MIDDLE", "3 RIGHT"},
+        {"1 ROAD WINDOW HOME", "2 HOME ROAD WINDOW", "3 WINDOW ROAD HOME"},
+        {"1 FOX", "2 BEAR", "3 WOLF"},
+        {"1 FOX", "2 BEAR", "3 RABBIT"},
+        {"1 BEAR", "2 WOLF", "3 FOX"}
+    };
+    unsigned id = 0, i;
+    if (game->active_encounter >= 0)
+        id = game->assets->level.encounters[(unsigned)game->active_encounter].dialogue_id;
+    if (id < 1 || id > 6) id = 1;
+    video_render_game(game);
+    fill_rect(12 + draw_pan, 45, 296, 112, 1);
+    fill_rect(16 + draw_pan, 49, 288, 104, game->assets->level.theme == KOLO_THEME_DEEP ? 29 : 5);
+    draw_text(25 + draw_pan, 57, questions[id - 1], 15, 1);
+    for (i = 0; i < 3; ++i)
+        draw_text(30 + draw_pan, 82 + i * 20, answers[id - 1][i], i == selection ? 31 : 23, 1);
+    draw_text(42 + draw_pan, 140, "ARROWS 1 2 3 ENTER", 14, 1);
+    render_state = RENDER_PAUSE;
+}
+
+void video_render_game_over(const GameState *game)
+{
+    video_render_game(game); overlay_box(16);
+    draw_text(88 + draw_pan, 77, "GAME OVER", 15, 2);
+    draw_text(79 + draw_pan, 113, "ENTER FOR TITLE", 23, 1);
+    render_state = RENDER_WIN;
+}
+
+void video_render_intro(const AssetPack *assets, unsigned scene, u32 ticks)
+{
+    GameState preview;
+    game_init(&preview, assets);
+    preview.camera_x = 0;
+    draw_base = next_game_page ? GAME_PAGE_1 : GAME_PAGE_0; next_game_page ^= 1;
+    draw_world(&preview, 0);
+    fill_rect(38, 34, 244, 106, 21);
+    fill_rect(43, 39, 234, 96, 26);
+    if (scene == 0) {
+        draw_text(62, 48, "GRANDPARENTS BAKE KOLOBOK", 15, 1);
+        fill_rect(68, 78, 38, 42, 9); fill_rect(74, 84, 26, 25, 19);
+        draw_text(127, 90, "BY THE OVEN", 31, 1);
+    } else if (scene == 1) {
+        draw_text(73, 50, "COOLING ON THE WINDOW", 15, 1);
+        fill_rect(70, 111, 180, 8, 21);
+        blit_sprite(assets, 0, 151, 94);
+    } else if (scene == 2) {
+        draw_text(76, 50, "KOLOBOK WAKES AND ROLLS", 15, 1);
+        fill_rect(65, 112, 190, 8, 21);
+        blit_sprite(assets, (unsigned)((ticks >> 2) & 3), 70 + (int)(ticks % 150), 95);
+    } else {
+        draw_text(78, 51, "OUT INTO THE GARDEN", 15, 1);
+        blit_sprite(assets, 1, 153, 107 + (int)(ticks % 20));
+    }
+    draw_text(56, 151, "ENTER NEXT  ESC SKIP", 23, 1);
+    pending_base = draw_base; pending_pan = 0; flip_pending = 1; render_state = RENDER_GAME;
+}
+
+void video_render_ending(const GameState *game, u32 ticks)
+{
+    video_render_game(game);
+    fill_rect(28 + draw_pan, 38, 264, 126, 1);
+    fill_rect(32 + draw_pan, 42, 256, 118, 21);
+    draw_text(69 + draw_pan, 52, "KOLOBOK CAME HOME", 15, 2);
+    draw_text(72 + draw_pan, 88, "GRANDMOTHER GRANDFATHER", 31, 1);
+    draw_text(84 + draw_pan, 103, "AND ALL THE BERRIES", 31, 1);
+    if ((ticks / 30) & 1) draw_text(111 + draw_pan, 130, "THE END", 14, 2);
+    draw_text(88 + draw_pan, 151, "ENTER FOR CREDITS", 23, 1);
+    render_state = RENDER_WIN;
+}
+
+void video_render_editor(const GameState *game, unsigned cursor_x, unsigned cursor_y,
+                         unsigned layer, unsigned tool, int dirty, int valid)
+{
+    static const char *layers[3]={"TILE","OBJECT","MARKER"};
+    int camera=(int)(game->camera_x>>KOLO_FP_SHIFT);
+    int x=(int)cursor_x*16-camera+draw_pan;
+    int y=HUD_H+(int)cursor_y*16;
+    video_render_game(game);
+    x=(int)cursor_x*16-camera+draw_pan;
+    fill_rect(x,y,16,2,31);fill_rect(x,y+14,16,2,31);
+    fill_rect(x,y,2,16,31);fill_rect(x+14,y,2,16,31);
+    fill_rect(0,0,LOGICAL_W,HUD_H,1);
+    draw_text(3,3,"X",23,1);draw_number(10,3,cursor_x,15);
+    draw_text(35,3,"Y",23,1);draw_number(42,3,cursor_y,15);
+    draw_text(62,3,layers[layer%3],31,1);draw_text(112,3,"TOOL",23,1);draw_number(143,3,tool,15);
+    draw_text(168,3,game->assets->level.theme==0?"GARDEN":game->assets->level.theme==1?"FOREST":"DEEP",11,1);
+    draw_text(224,3,valid?"VALID":"INVALID",valid?7:18,1);
+    if(dirty)draw_text(299,3,"D",14,1);
+    render_state=RENDER_GAME;
+}
+
+void video_render_editor_help(const GameState *game)
+{
+    video_render_game(game);fill_rect(18+draw_pan,31,284,142,1);fill_rect(22+draw_pan,35,276,134,5);
+    draw_text(119+draw_pan,42,"KOLOEDIT HELP",15,1);
+    draw_text(34+draw_pan,60,"ARROWS MOVE  TAB LAYER",23,1);
+    draw_text(34+draw_pan,74,"PGUP PGDN SELECT  SPACE PAINT",23,1);
+    draw_text(34+draw_pan,88,"DELETE ERASE  ENTER PROPERTIES",23,1);
+    draw_text(34+draw_pan,102,"1 START  2 CHECKPOINT  3 EXIT",23,1);
+    draw_text(34+draw_pan,116,"F2 SAVE  F3 VALIDATE  F4 THEME",23,1);
+    draw_text(34+draw_pan,130,"ESC SAVE DISCARD CANCEL",23,1);
+    draw_text(88+draw_pan,151,"F1 CLOSE HELP",31,1);render_state=RENDER_PAUSE;
+}
+
+void video_render_editor_exit(const GameState *game)
+{
+    video_render_game(game);overlay_box(21);
+    draw_text(85+draw_pan,73,"UNSAVED CHANGES",15,1);
+    draw_text(78+draw_pan,94,"ENTER SAVE AND QUIT",31,1);
+    draw_text(78+draw_pan,108,"DELETE DISCARD",23,1);
+    draw_text(78+draw_pan,122,"ESC CANCEL",23,1);render_state=RENDER_PAUSE;
 }
 
 static void reconstruct_page(unsigned base, unsigned char pan)

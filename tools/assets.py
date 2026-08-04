@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build deterministic indexed VGA assets and KOLOBOK.DAT."""
+"""Build deterministic indexed VGA art and the indexed KOLOBOK.DAT v4 archive."""
 
 from __future__ import annotations
 
@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TILE = 16
 TRANSPARENT = 0
 PLAYER_FRAMES = 4
-SPRITE_COUNT = 9
+SPRITE_COUNT = 15
+TILE_COUNT = 11
 
 # VGA-friendly RGB palette. The file stores 6-bit DAC values.
 COLORS = [
@@ -40,7 +41,7 @@ def pal_image(size: tuple[int, int]) -> Image.Image:
 
 
 def draw_tiles() -> Image.Image:
-    sheet = pal_image((6 * TILE, TILE))
+    sheet = pal_image((TILE_COUNT * TILE, TILE))
     d = ImageDraw.Draw(sheet)
     # 0: air remains transparent.
     x = TILE
@@ -68,6 +69,34 @@ def draw_tiles() -> Image.Image:
     d.rectangle((x, 0, x + 15, 15), fill=5)
     d.ellipse((x + 2, 2, x + 13, 13), fill=6)
     d.rectangle((x + 6, 0, x + 8, 15), fill=21)
+    # 5..7 sand top, body and platform.
+    x = 5 * TILE
+    d.rectangle((x, 0, x + 15, 15), fill=11)
+    d.rectangle((x, 0, x + 15, 2), fill=31)
+    for px, py in ((2, 6), (10, 5), (6, 12), (14, 10)):
+        d.point((x + px, py), fill=20)
+    x = 6 * TILE
+    d.rectangle((x, 0, x + 15, 15), fill=26)
+    for px, py in ((1, 3), (8, 2), (4, 9), (12, 13)):
+        d.line((x + px, py, x + px + 2, py), fill=11)
+    x = 7 * TILE
+    d.rectangle((x, 3, x + 15, 9), fill=26)
+    d.rectangle((x, 1, x + 15, 3), fill=31)
+    d.rectangle((x, 9, x + 15, 11), fill=21)
+    # 8..10 ice top, body and platform.
+    x = 8 * TILE
+    d.rectangle((x, 0, x + 15, 15), fill=27)
+    d.rectangle((x, 0, x + 15, 3), fill=28)
+    d.line((x + 2, 7, x + 9, 12), fill=2)
+    d.line((x + 9, 12, x + 14, 8), fill=2)
+    x = 9 * TILE
+    d.rectangle((x, 0, x + 15, 15), fill=3)
+    d.line((x + 1, 4, x + 7, 10), fill=28)
+    d.line((x + 7, 10, x + 14, 3), fill=2)
+    x = 10 * TILE
+    d.rectangle((x, 3, x + 15, 9), fill=27)
+    d.rectangle((x, 1, x + 15, 3), fill=28)
+    d.rectangle((x, 9, x + 15, 11), fill=3)
     return sheet
 
 
@@ -127,6 +156,37 @@ def draw_sprites() -> Image.Image:
     for px, py in ((8, 1), (3, 5), (12, 7), (7, 12)):
         d.line((x + px - 1, py, x + px + 1, py), fill=31)
         d.line((x + px, py - 1, x + px, py + 1), fill=31)
+    # 9 wolf, 10 bear.
+    x = 9 * TILE
+    d.ellipse((x + 1, 6, x + 13, 14), fill=22)
+    d.polygon((x + 3, 7, x + 2, 1, x + 7, 6), fill=22)
+    d.polygon((x + 9, 6, x + 12, 1, x + 13, 8), fill=22)
+    d.polygon((x + 11, 8, x + 15, 10, x + 11, 12), fill=23)
+    d.point((x + 9, 7), fill=16)
+    d.line((x + 2, 14, x + 12, 14), fill=1)
+    x = 10 * TILE
+    d.ellipse((x + 1, 4, x + 14, 15), fill=9)
+    d.ellipse((x + 3, 1, x + 7, 6), fill=10)
+    d.ellipse((x + 9, 1, x + 13, 6), fill=10)
+    d.ellipse((x + 5, 6, x + 12, 12), fill=10)
+    d.point((x + 6, 7), fill=1); d.point((x + 11, 7), fill=1)
+    # 11 blue berry, 12 small pie, 13 big pie, 14 freeze snowflake.
+    x = 11 * TILE
+    d.ellipse((x + 3, 4, x + 12, 13), fill=27)
+    d.ellipse((x + 5, 5, x + 10, 11), fill=28)
+    d.line((x + 8, 4, x + 10, 1), fill=6)
+    x = 12 * TILE
+    d.polygon((x + 2, 11, x + 5, 5, x + 11, 5, x + 14, 11), fill=20)
+    d.rectangle((x + 3, 10, x + 13, 14), fill=13)
+    d.line((x + 5, 7, x + 11, 7), fill=31)
+    x = 13 * TILE
+    d.ellipse((x + 1, 3, x + 14, 15), fill=13)
+    d.ellipse((x + 3, 5, x + 12, 12), fill=20)
+    d.line((x + 4, 7, x + 11, 7), fill=31)
+    x = 14 * TILE
+    for angle in ((8, 1, 8, 14), (2, 4, 13, 11), (2, 11, 13, 4)):
+        d.line(tuple(x + v if i % 2 == 0 else v for i, v in enumerate(angle)), fill=28)
+    d.ellipse((x + 6, 6, x + 9, 9), fill=31)
     return sheet
 
 
@@ -285,7 +345,7 @@ def decode_planar_sprite_spans(encoded: bytes, alignment: int, plane: int) -> by
 
 
 def validate_raster_encodings(tiles: Image.Image, sprites: Image.Image) -> None:
-    for index in range(6):
+    for index in range(TILE_COUNT):
         tile = tiles.crop((index * TILE, 0, (index + 1) * TILE, TILE))
         assert decode_planar_tile(encode_planar_tile(tile)) == tile.tobytes()
     for index in range(SPRITE_COUNT):
@@ -309,7 +369,7 @@ def validate_raster_encodings(tiles: Image.Image, sprites: Image.Image) -> None:
     assert len(player_frames) == PLAYER_FRAMES
 
 
-def write_pack(out: Path, tiles: Image.Image, sprites: Image.Image, level: dict, cells: bytearray) -> None:
+def make_bank(tiles: Image.Image, sprites: Image.Image, theme: int) -> bytes:
     sprite_spans = []
     planar_sprite_spans = []
     for index in range(SPRITE_COUNT):
@@ -324,32 +384,39 @@ def write_pack(out: Path, tiles: Image.Image, sprites: Image.Image, level: dict,
                 )
     span_blob = b"".join(sprite_spans)
     planar_span_blob = b"".join(planar_sprite_spans)
-    payload = bytearray(b"KOLODAT1")
-    payload.extend(struct.pack("<9H", 3, level["width"], level["height"], 6,
-                               SPRITE_COUNT, len(level["berries"]),
-                               len(level["enemies"]), TILE, TILE))
+    payload = bytearray(b"KBANK4\0\0")
+    payload.extend(struct.pack("<6H", 4, theme, TILE_COUNT,
+                               SPRITE_COUNT, TILE, TILE))
     for r, g, b in COLORS:
         payload.extend((r >> 2, g >> 2, b >> 2))
-    for index in range(6):
+    for index in range(TILE_COUNT):
         tile = tiles.crop((index * TILE, 0, (index + 1) * TILE, TILE))
         payload.extend(encode_planar_tile(tile))
+    # Per-tile collision flags and surface material (grass/sand/ice/air).
+    payload.extend((0, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1))
+    payload.extend((3, 0, 0, 0, 3, 1, 1, 1, 2, 2, 2))
     payload.extend(struct.pack("<H", len(span_blob)))
     payload.extend(span_blob)
     payload.extend(struct.pack("<H", len(planar_span_blob)))
     payload.extend(planar_span_blob)
-    payload.extend(cells)
-    for x, y in level["berries"]:
-        payload.extend(struct.pack("<HH", x * TILE + 4, y * TILE + 2))
-    for enemy in level["enemies"]:
-        kind = 0 if enemy["type"] == "hare" else 1
-        payload.extend(struct.pack("<BHHHH", kind, enemy["x"] * TILE,
-                                   enemy["y"] * TILE, enemy["min_x"] * TILE,
-                                   enemy["max_x"] * TILE))
-    for key in ("checkpoint", "home"):
-        x, y = level[key]
-        payload.extend(struct.pack("<HH", x * TILE, y * TILE))
     payload.extend(struct.pack("<I", zlib.crc32(payload) & 0xFFFFFFFF))
-    assert len(payload) < 48 * 1024, "asset pack exceeds the MVP memory budget"
+    assert len(payload) < 60 * 1024, "resource bank exceeds the 60 KiB limit"
+    return bytes(payload)
+
+
+def write_pack(out: Path, tiles: Image.Image, sprites: Image.Image) -> None:
+    names = (("INTRO", 0), ("GARDEN", 0), ("FOREST", 1), ("DEEP", 2))
+    banks = [(name, make_bank(tiles, sprites, theme)) for name, theme in names]
+    header_size = 12 + len(banks) * 16
+    offset = header_size
+    payload = bytearray(b"KOLODAT4")
+    payload.extend(struct.pack("<HH", 4, len(banks)))
+    for name, bank in banks:
+        payload.extend(name.encode("ascii").ljust(8, b"\0"))
+        payload.extend(struct.pack("<II", offset, len(bank)))
+        offset += len(bank)
+    for _, bank in banks:
+        payload.extend(bank)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(payload)
 
@@ -359,12 +426,10 @@ def main() -> None:
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "KOLOBOK.DAT")
     args = parser.parse_args()
-    level, cells = load_level(ROOT / "assets" / "level.json")
-    validate(level, cells)
     tiles, sprites = draw_tiles(), draw_sprites()
     validate_raster_encodings(tiles, sprites)
     if args.check:
-        print("assets: PASS (level, palette, planar tiles, sprite spans)")
+        print("assets: PASS (v4 banks, palette, planar tiles, sprite spans)")
         return
     source_dir = ROOT / "assets" / "generated"
     source_dir.mkdir(parents=True, exist_ok=True)
@@ -373,7 +438,7 @@ def main() -> None:
     palette = pal_image((256, 1))
     palette.putdata(range(256))
     palette.save(source_dir / "palette.png", optimize=False)
-    write_pack(args.out, tiles, sprites, level, cells)
+    write_pack(args.out, tiles, sprites)
     print(f"assets: wrote {args.out} ({args.out.stat().st_size} bytes)")
 
 

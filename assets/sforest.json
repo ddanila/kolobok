@@ -1,0 +1,59 @@
+{
+  "name": "SMALL FOREST",
+  "width": 128,
+  "height": 11,
+  "theme": "forest",
+  "cloud_seed": 195936478,
+  "required_red_berries": 8,
+  "ground_y": 9,
+  "pits": [[20, 21], [57, 58], [91, 93], [116, 117]],
+  "surfaces": [
+    {"material": "sand", "range": [27, 39]},
+    {"material": "ice", "range": [65, 73]},
+    {"material": "ice", "range": [101, 110]}
+  ],
+  "platforms": [
+    {"y": 7, "material": "grass", "ranges": [[11, 17], [43, 49], [78, 84]]},
+    {"y": 6, "material": "sand", "ranges": [[31, 36]]},
+    {"y": 6, "material": "ice", "ranges": [[102, 108]]}
+  ],
+  "start": [2, 8],
+  "checkpoints": [[42, 8], [86, 8]],
+  "exit": [125, 8],
+  "home": [2, 8],
+  "pickups": [
+    {"id": 1, "type": "red_berry", "at": [13, 6]},
+    {"id": 2, "type": "red_berry", "at": [25, 8]},
+    {"id": 3, "type": "red_berry", "at": [34, 5]},
+    {"id": 4, "type": "red_berry", "at": [47, 6]},
+    {"id": 5, "type": "red_berry", "at": [63, 8]},
+    {"id": 6, "type": "red_berry", "at": [81, 6]},
+    {"id": 7, "type": "red_berry", "at": [105, 5]},
+    {"id": 8, "type": "red_berry", "at": [120, 8]},
+    {"id": 9, "type": "blue_berry", "at": [54, 8]},
+    {"id": 10, "type": "blue_berry", "at": [98, 8]},
+    {"id": 11, "type": "small_pie", "at": [40, 8]},
+    {"id": 12, "type": "small_pie", "at": [112, 8]}
+  ],
+  "animals": [
+    {"id": 1, "type": "rabbit", "at": [9, 8], "patrol": [5, 18], "dialogue_id": 5, "flags": 1},
+    {"id": 2, "type": "rabbit", "at": [46, 6], "patrol": [43, 49]},
+    {"id": 3, "type": "rabbit", "at": [75, 8], "patrol": [70, 85]},
+    {"id": 4, "type": "fox", "at": [29, 8], "patrol": [23, 40]},
+    {"id": 5, "type": "fox", "at": [61, 8], "patrol": [59, 73]},
+    {"id": 6, "type": "fox", "at": [114, 8], "patrol": [111, 122]},
+    {"id": 7, "type": "wolf", "at": [87, 8], "patrol": [83, 99], "dialogue_id": 2, "flags": 1},
+    {"id": 8, "type": "wolf", "at": [105, 8], "patrol": [98, 115]}
+  ],
+  "trees": [
+    {"id": 1, "type": "birch", "at": [18, 8], "height": 3},
+    {"id": 2, "type": "oak", "at": [50, 8], "height": 4},
+    {"id": 3, "type": "fir", "at": [76, 8], "height": 4},
+    {"id": 4, "type": "oak", "at": [96, 8], "height": 5},
+    {"id": 5, "type": "fir", "at": [119, 8], "height": 4}
+  ],
+  "encounters": [
+    {"id": 2, "animal_id": 7, "dialogue_id": 2, "required": true, "correct": 1, "reward": "none", "retry_seconds": 5},
+    {"id": 5, "animal_id": 1, "dialogue_id": 5, "required": false, "correct": 2, "reward": "small_pie", "retry_seconds": 5}
+  ]
+}
