@@ -19,7 +19,7 @@ if ! wcl -q -bt=dos -ms -3 -ox -s -k8192 -i="$project_root/src" \
     sed -n '1,200p' "$project_root/build/WATCOM.LOG" >&2
     exit 1
 fi
-if ! wcl -q -bt=dos -ms -3 -ox -s -k8192 -i="$project_root/src" \
+if ! wcl -q -bt=dos -ms -3 -ox -s -k16384 -i="$project_root/src" \
     -fe=KOLOEDIT.EXE \
     "$project_root/src/editor.c" "$project_root/src/game.c" \
     "$project_root/src/assets.c" "$project_root/src/platform.c" \

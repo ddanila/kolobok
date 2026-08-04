@@ -37,7 +37,9 @@ heal, refill to three lives, or grant the fourth bonus life. Stomping an animal
 gives the boosted bounce and freezes it for three seconds.
 
 Command-line options are `-nosound`, `-nomusic`, `-selftest`, `-benchmark`, and
-`-capture [intro|garden|forest|deep|dialogue|frozen|gameover|home]`.
+`-capture [intro|garden|forest|deep|dialogue|frozen|gameover|home|credits]`.
+`-playtest` is the deterministic target-side campaign driver used by the test
+suite.
 
 ## Build and test
 
@@ -51,12 +53,13 @@ make dist
 ```
 
 The first build installs a pinned Linux-hosted Open Watcom toolchain under
-`.tools/`. `make test` runs host simulation, KLV/archive, JSON round-trip, CRC,
-AdLib mock-sink, DOS-native game/editor self-tests, and the 7,350-cycle Deep
-Forest performance gate. The gate requires at least 50 raw frames/s and 29.5
-paced frames/s.
+`.tools/`. `make test` runs host gameplay and state-machine tests, campaign
+balance checks, KLV/archive JSON round-trips and CRC rejection, the AdLib mock
+register sink, DOS-native game/editor self-tests, a complete deterministic
+three-level playthrough, and the 7,350-cycle Deep Forest performance gate. The
+gate requires at least 50 raw frames/s and 29.5 paced frames/s.
 
-`make screenshot` captures eight deterministic DOS-native states and records
+`make screenshot` captures nine deterministic DOS-native states and records
 their VRAM CRCs. `make dist` creates a redistributable directory containing
 `KOLOBOK.EXE`, `KOLOEDIT.EXE`, `KOLOBOK.DAT`, and all three KLV files.
 
@@ -69,9 +72,11 @@ Run `KOLOEDIT.EXE LEVEL.KLV`. If no filename is supplied, it prompts for an
 - Tab changes Tile/Object/Marker layer
 - Page Up/Down changes the selected tool
 - Space paints or places; Delete erases
-- Enter edits the selected object subtype
+- Enter opens a property form for the selected object. It covers subtype,
+  flags, reward/dialogue data, patrol bounds, tree type and climb association
 - `1`, `2`, `3` place start, checkpoint, and exit
-- F2 saves atomically through `LEVEL.TMP`; F3 validates; F4 changes theme
+- F2 saves atomically through `LEVEL.TMP`; F3 validates; F4 edits level theme,
+  required-red count, and cloud seed
 - Escape opens the save/discard/cancel confirmation
 
 `KOLOEDIT.EXE -selftest` performs a create/edit/save/reload/delete cycle entirely
@@ -79,9 +84,11 @@ inside DOSBox-X without GUI automation.
 
 ## Data layout
 
-`KOLOBOK.DAT` version 4 is an indexed archive containing independent `INTRO`,
-`GARDEN`, `FOREST`, and `DEEP` banks. The archive exceeds 64 KiB, but every bank
-is checked to remain below 60 KiB and only the active bank is retained.
+`KOLOBOK.DAT` version 4 is an indexed archive containing visually distinct
+`INTRO`, `GARDEN`, `FOREST`, and `DEEP` banks. The archive exceeds 64 KiB, but
+every bank is checked to remain below 60 KiB. DOS allocates only the active bank
+in a paragraph-aligned far-memory segment; the tile and sprite blitters consume
+far sources directly instead of copying the bank into near data.
 
 `GARDEN.KLV`, `SFOREST.KLV`, and `DFOREST.KLV` are little-endian version-4 level
 files with CRC-32 protection, fixed 11-row maps, material tiles, markers,

@@ -1,4 +1,4 @@
-.PHONY: all assets levels toolchain dos host-test perf-test test run screenshot dist clean
+.PHONY: all assets levels toolchain dos host-test perf-test playtest test run screenshot dist clean
 
 PYTHON ?= python3
 HOST_CC ?= gcc
@@ -38,11 +38,15 @@ host-test: build/test_game build/test_music
 	./build/test_music
 	$(PYTHON) tools/assets.py --check
 	$(PYTHON) tests/test_levels.py
+	$(PYTHON) tests/test_balance.py
 
 perf-test: dos
 	bash tools/dosbox-perf-test.sh
 
-test: dos host-test perf-test
+playtest: dos
+	bash tools/dosbox-playtest.sh
+
+test: dos host-test perf-test playtest
 	bash tools/dosbox-test.sh
 
 run: dos

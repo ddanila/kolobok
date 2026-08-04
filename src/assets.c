@@ -2,6 +2,10 @@
 
 #include <stdlib.h>
 #include <string.h>
+#ifdef __WATCOMC__
+#include <dos.h>
+#include <i86.h>
+#endif
 
 #define KLV_HEADER_SIZE 32
 
@@ -27,7 +31,7 @@ static void write_u32(FILE *file, u32 value)
     fputc((int)((value >> 16) & 255), file); fputc((int)((value >> 24) & 255), file);
 }
 
-u32 assets_crc32(const u8 *data, u32 length)
+u32 assets_crc32(KoloConstFarPtr data, u32 length)
 {
     u32 crc = 0xffffffffUL, i;
     int bit;
@@ -43,6 +47,21 @@ static int set_error(char *error, unsigned size, const char *message)
 {
     if (error != NULL && size) { strncpy(error, message, size - 1); error[size - 1] = 0; }
     return 0;
+}
+
+static u16 far_read_u16_at(KoloConstFarPtr cursor)
+{
+    return (u16)(cursor[0]|((u16)cursor[1]<<8));
+}
+
+static u32 far_read_u32(KoloConstFarPtr p)
+{
+    return (u32)p[0]|((u32)p[1]<<8)|((u32)p[2]<<16)|((u32)p[3]<<24);
+}
+
+static int far_equal(KoloConstFarPtr p,const char *text,unsigned length)
+{
+    unsigned i;for(i=0;i<length;++i)if(p[i]!=(u8)text[i])return 0;return 1;
 }
 
 void level_free(LevelData *level)
@@ -244,22 +263,48 @@ int level_save(const LevelData *level, const char *path, char *error, unsigned e
 
 static int parse_bank(AssetPack *pack, char *error, unsigned error_size)
 {
-    const u8 *p,*end,*span_end; u16 version,tile_w,tile_h,span_size; unsigned i,row,variant;
-    if(pack->blob_size<24||memcmp(pack->blob,"KBANK4\0\0",8))return set_error(error,error_size,"bad resource bank signature");
-    if(assets_crc32(pack->blob,pack->blob_size-4)!=read_u32_at(pack->blob+pack->blob_size-4))return set_error(error,error_size,"resource bank checksum mismatch");
-    p=pack->blob+8;end=pack->blob+pack->blob_size-4;version=read_u16(&p);pack->theme=read_u16(&p);pack->tile_count=read_u16(&p);pack->sprite_count=read_u16(&p);tile_w=read_u16(&p);tile_h=read_u16(&p);
+    KoloConstFarPtr p,end,span_end; u16 version,tile_w,tile_h,span_size; unsigned i,row,variant;
+    if(pack->blob_size<24||!far_equal(pack->blob,"KBANK4\0\0",8))return set_error(error,error_size,"bad resource bank signature");
+    if(assets_crc32(pack->blob,pack->blob_size-4)!=far_read_u32(pack->blob+pack->blob_size-4))return set_error(error,error_size,"resource bank checksum mismatch");
+    p=pack->blob+8;end=pack->blob+pack->blob_size-4;
+    version=far_read_u16_at(p);p+=2;pack->theme=far_read_u16_at(p);p+=2;
+    pack->tile_count=far_read_u16_at(p);p+=2;pack->sprite_count=far_read_u16_at(p);p+=2;
+    tile_w=far_read_u16_at(p);p+=2;tile_h=far_read_u16_at(p);p+=2;
     if(version!=4||tile_w!=16||tile_h!=16||pack->tile_count==0||pack->tile_count>16||pack->sprite_count==0||pack->sprite_count>KOLO_MAX_SPRITES)return set_error(error,error_size,"unsupported resource bank metadata");
     if((u32)(end-p)<768UL+(u32)pack->tile_count*258UL+4UL)return set_error(error,error_size,"truncated resource bank");
-    pack->palette=(u8*)p;p+=768;pack->tiles=(u8*)p;p+=(u32)pack->tile_count*256UL;
-    pack->tile_flags=(u8*)p;p+=pack->tile_count;pack->tile_material=(u8*)p;p+=pack->tile_count;
-    span_size=read_u16(&p);if((u32)(end-p)<(u32)span_size+2UL)return set_error(error,error_size,"truncated sprite spans");span_end=p+span_size;
-    for(i=0;i<pack->sprite_count;++i){pack->sprite_spans[i]=(u8*)p;for(row=0;row<16;++row){unsigned run,n;if(p>=span_end)return set_error(error,error_size,"truncated sprite spans");n=*p++;for(run=0;run<n;++run){unsigned x,len;if((u32)(span_end-p)<2)return set_error(error,error_size,"truncated sprite span");x=*p++;len=*p++;if(!len||x+len>16||(u32)(span_end-p)<len)return set_error(error,error_size,"invalid sprite span");p+=len;}}}
+    pack->palette=(KoloFarPtr)p;p+=768;pack->tiles=(KoloFarPtr)p;p+=(u32)pack->tile_count*256UL;
+    pack->tile_flags=(KoloFarPtr)p;p+=pack->tile_count;pack->tile_material=(KoloFarPtr)p;p+=pack->tile_count;
+    span_size=far_read_u16_at(p);p+=2;if((u32)(end-p)<(u32)span_size+2UL)return set_error(error,error_size,"truncated sprite spans");span_end=p+span_size;
+    for(i=0;i<pack->sprite_count;++i){pack->sprite_spans[i]=(KoloFarPtr)p;for(row=0;row<16;++row){unsigned run,n;if(p>=span_end)return set_error(error,error_size,"truncated sprite spans");n=*p++;for(run=0;run<n;++run){unsigned x,len;if((u32)(span_end-p)<2)return set_error(error,error_size,"truncated sprite span");x=*p++;len=*p++;if(!len||x+len>16||(u32)(span_end-p)<len)return set_error(error,error_size,"invalid sprite span");p+=len;}}}
     if(p!=span_end)return set_error(error,error_size,"unexpected sprite span size");
-    span_size=read_u16(&p);
+    span_size=far_read_u16_at(p);p+=2;
     if((u32)(end-p)!=(u32)span_size)return set_error(error,error_size,"unexpected planar span size");
     span_end=p+span_size;
-    for(i=0;i<pack->sprite_count;++i)for(variant=0;variant<16;++variant){pack->sprite_planar_spans[i][variant]=(u8*)p;for(row=0;row<16;++row){unsigned run,n;if(p>=span_end)return set_error(error,error_size,"truncated planar spans");n=*p++;for(run=0;run<n;++run){unsigned x,len;if((u32)(span_end-p)<2)return set_error(error,error_size,"truncated planar span");x=*p++;len=*p++;if(!len||x+len>5||(u32)(span_end-p)<len)return set_error(error,error_size,"invalid planar span");p+=len;}}}
+    for(i=0;i<pack->sprite_count;++i)for(variant=0;variant<16;++variant){pack->sprite_planar_spans[i][variant]=(KoloFarPtr)p;for(row=0;row<16;++row){unsigned run,n;if(p>=span_end)return set_error(error,error_size,"truncated planar spans");n=*p++;for(run=0;run<n;++run){unsigned x,len;if((u32)(span_end-p)<2)return set_error(error,error_size,"truncated planar span");x=*p++;len=*p++;if(!len||x+len>5||(u32)(span_end-p)<len)return set_error(error,error_size,"invalid planar span");p+=len;}}}
     return p==span_end?1:set_error(error,error_size,"unexpected planar span data");
+}
+
+static int read_bank_blob(AssetPack *pack,FILE *file,u32 size,
+                          char *error,unsigned error_size)
+{
+#ifdef __WATCOMC__
+    u8 buffer[1024];u32 done=0;unsigned chunk,segment;
+    if(_dos_allocmem((unsigned)((size+15UL)>>4),&segment)!=0)
+        return set_error(error,error_size,"not enough far memory for resource bank");
+    pack->bank_segment=(u16)segment;
+    pack->blob=(KoloFarPtr)MK_FP(pack->bank_segment,0);
+    while(done<size){
+        chunk=(unsigned)(size-done>sizeof(buffer)?sizeof(buffer):size-done);
+        if(fread(buffer,1,chunk,file)!=chunk)return set_error(error,error_size,"short read from resource bank");
+        _fmemcpy(pack->blob+done,buffer,chunk);done+=chunk;
+    }
+#else
+    pack->blob=(u8*)malloc((unsigned)size);
+    if(!pack->blob)return set_error(error,error_size,"not enough memory for resource bank");
+    if(fread(pack->blob,1,(unsigned)size,file)!=(unsigned)size)
+        return set_error(error,error_size,"short read from resource bank");
+#endif
+    pack->blob_size=size;return 1;
 }
 
 int assets_load_bank(AssetPack *pack,const char *archive_path,const char *bank_name,const char *level_path,char *error,unsigned error_size)
@@ -267,15 +312,14 @@ int assets_load_bank(AssetPack *pack,const char *archive_path,const char *bank_n
     FILE *file;u8 header[12],entry[16];u16 count,i;u32 offset=0,size=0;char wanted[9];
     memset(pack,0,sizeof(*pack));memset(wanted,0,sizeof(wanted));strncpy(wanted,bank_name,8);
     if(level_path&&!level_load(&pack->level,level_path,error,error_size))return 0;
-    file=fopen(archive_path,"rb");if(!file)return set_error(error,error_size,"cannot open KOLOBOK.DAT");
-    if(fread(header,1,12,file)!=12||memcmp(header,"KOLODAT4",8)){fclose(file);return set_error(error,error_size,"unsupported KOLOBOK.DAT format");}
-    if((header[8]|((u16)header[9]<<8))!=4){fclose(file);return set_error(error,error_size,"unsupported archive version");}count=(u16)(header[10]|((u16)header[11]<<8));
-    if(!count||count>16){fclose(file);return set_error(error,error_size,"invalid archive bank count");}
-    for(i=0;i<count;++i){if(fread(entry,1,16,file)!=16){fclose(file);return set_error(error,error_size,"truncated archive index");}if(!strncmp((char*)entry,wanted,8)){offset=read_u32_at(entry+8);size=read_u32_at(entry+12);}}
-    if(!offset||size<24||size>=61440UL){fclose(file);return set_error(error,error_size,"resource bank missing or too large");}
-    if(fseek(file,(long)offset,SEEK_SET)){fclose(file);return set_error(error,error_size,"cannot seek resource bank");}
-    pack->blob=(u8*)malloc((unsigned)size);if(!pack->blob){fclose(file);return set_error(error,error_size,"not enough memory for resource bank");}pack->blob_size=size;
-    if(fread(pack->blob,1,(unsigned)size,file)!=(unsigned)size){fclose(file);assets_free(pack);return set_error(error,error_size,"short read from resource bank");}fclose(file);
+    file=fopen(archive_path,"rb");if(!file){assets_free(pack);return set_error(error,error_size,"cannot open KOLOBOK.DAT");}
+    if(fread(header,1,12,file)!=12||memcmp(header,"KOLODAT4",8)){fclose(file);assets_free(pack);return set_error(error,error_size,"unsupported KOLOBOK.DAT format");}
+    if((header[8]|((u16)header[9]<<8))!=4){fclose(file);assets_free(pack);return set_error(error,error_size,"unsupported archive version");}count=(u16)(header[10]|((u16)header[11]<<8));
+    if(!count||count>16){fclose(file);assets_free(pack);return set_error(error,error_size,"invalid archive bank count");}
+    for(i=0;i<count;++i){if(fread(entry,1,16,file)!=16){fclose(file);assets_free(pack);return set_error(error,error_size,"truncated archive index");}if(!strncmp((char*)entry,wanted,8)){offset=read_u32_at(entry+8);size=read_u32_at(entry+12);}}
+    if(!offset||size<24||size>=61440UL){fclose(file);assets_free(pack);return set_error(error,error_size,"resource bank missing or too large");}
+    if(fseek(file,(long)offset,SEEK_SET)){fclose(file);assets_free(pack);return set_error(error,error_size,"cannot seek resource bank");}
+    if(!read_bank_blob(pack,file,size,error,error_size)){fclose(file);assets_free(pack);return 0;}fclose(file);
 #ifdef KOLO_DEBUG_LOAD
     puts("LOAD bank read");
 #endif
@@ -298,5 +342,20 @@ int assets_load(AssetPack *pack,const char *path,char *error,unsigned error_size
 
 void assets_free(AssetPack *pack)
 {
-    level_free(&pack->level);if(pack->blob)free(pack->blob);memset(pack,0,sizeof(*pack));
+    level_free(&pack->level);
+#ifdef __WATCOMC__
+    if(pack->bank_segment)_dos_freemem(pack->bank_segment);
+#else
+    if(pack->blob)free(pack->blob);
+#endif
+    memset(pack,0,sizeof(*pack));
+}
+
+int assets_far_memory_active(const AssetPack *pack)
+{
+#ifdef __WATCOMC__
+    return pack->blob!=0&&pack->bank_segment!=0&&FP_OFF(pack->blob)==0;
+#else
+    return pack->blob!=0;
+#endif
 }

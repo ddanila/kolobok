@@ -29,11 +29,15 @@ def main() -> None:
     version, count = struct.unpack_from("<HH", archive, 8)
     assert version == 4 and count == 4
     names = []
+    bank_payloads = []
     for i in range(count):
         name, offset, size = struct.unpack_from("<8sII", archive, 12 + i * 16)
         names.append(name.rstrip(b"\0").decode())
         assert size < 60 * 1024 and archive[offset:offset + 8] == b"KBANK4\0\0"
+        bank_payloads.append(archive[offset:offset + size])
     assert names == ["INTRO", "GARDEN", "FOREST", "DEEP"]
+    assert len(set(bank_payloads)) == 4, "resource banks must not be duplicates"
+    assert len({bank[20:20 + 768] for bank in bank_payloads}) == 4, "bank palettes must be distinct"
     print("level/archive tests: PASS (round-trip, CRC, validation, bank limits)")
 
 

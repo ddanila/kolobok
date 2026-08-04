@@ -10,6 +10,16 @@ typedef signed short s16;
 typedef unsigned long u32;
 typedef signed long s32;
 
+#ifdef __WATCOMC__
+#define KOLO_FAR __far
+typedef u8 __far *KoloFarPtr;
+typedef const u8 __far *KoloConstFarPtr;
+#else
+#define KOLO_FAR
+typedef u8 *KoloFarPtr;
+typedef const u8 *KoloConstFarPtr;
+#endif
+
 #define KOLO_TILE_SIZE 16
 #define KOLO_LEVEL_HEIGHT 11
 #define KOLO_MAX_PICKUPS 32
@@ -64,17 +74,18 @@ typedef struct LevelData {
 } LevelData;
 
 typedef struct AssetPack {
-    u8 *blob;
+    KoloFarPtr blob;
     u32 blob_size;
+    u16 bank_segment;
     u16 theme;
     u16 tile_count;
     u16 sprite_count;
-    u8 *palette;
-    u8 *tiles;
-    u8 *tile_flags;
-    u8 *tile_material;
-    u8 *sprite_spans[KOLO_MAX_SPRITES];
-    u8 *sprite_planar_spans[KOLO_MAX_SPRITES][16];
+    KoloFarPtr palette;
+    KoloFarPtr tiles;
+    KoloFarPtr tile_flags;
+    KoloFarPtr tile_material;
+    KoloFarPtr sprite_spans[KOLO_MAX_SPRITES];
+    KoloFarPtr sprite_planar_spans[KOLO_MAX_SPRITES][16];
     LevelData level;
     /* Compatibility aliases used by the renderer and small host tools. */
     u16 map_w, map_h, berry_count, enemy_count;
@@ -90,6 +101,7 @@ int level_load(LevelData *level, const char *path, char *error, unsigned error_s
 int level_save(const LevelData *level, const char *path, char *error, unsigned error_size);
 void level_free(LevelData *level);
 int level_validate(const LevelData *level, char *error, unsigned error_size);
-u32 assets_crc32(const u8 *data, u32 length);
+u32 assets_crc32(KoloConstFarPtr data, u32 length);
+int assets_far_memory_active(const AssetPack *pack);
 
 #endif

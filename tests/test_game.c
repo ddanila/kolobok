@@ -72,6 +72,24 @@ static void test_ai_freeze(void)
     load(&p,"DEEP","build/DFOREST.KLV");game_init(&g,&p);g.player.x=0;g.player.y=0;for(i=0;i<400&&g.enemies[6].state!=KOLO_AI_CLIMB;++i)step(&g,1);assert(g.enemies[6].state==KOLO_AI_CLIMB||g.enemies[6].state==KOLO_AI_TOP_WAIT);assets_free(&p);
 }
 
+static void test_repeated_stomp_refresh(void)
+{
+    AssetPack p;GameState g;GameInput input={0,0,0,0,0};EnemyState*e;unsigned i;load(&p,"GARDEN","build/GARDEN.KLV");game_init(&g,&p);
+    for(i=1;i<p.level.animal_count;++i)g.enemies[i].pacified=1;
+    e=&g.enemies[0];e->vx=0;g.player.invulnerable=255;
+    g.player.x=e->x;g.player.y=e->y-((s32)KOLO_PLAYER_H<<8);g.player.vy=400;g.player.on_ground=0;game_step(&g,&input);assert((g.events&KOLO_EVENT_BOUNCE)&&e->frozen==90);
+    g.player.x=0;for(i=0;i<10;++i)game_step(&g,&input);assert(e->frozen==80);
+    g.player.x=e->x;g.player.y=e->y-((s32)KOLO_PLAYER_H<<8);g.player.vy=400;g.player.on_ground=0;game_step(&g,&input);assert(e->frozen==90);assets_free(&p);
+}
+
+static void test_complete_bear_cycle(void)
+{
+    AssetPack p;GameState g;unsigned i,seen_climb=0,seen_top=0,seen_down=0,seen_wait=0,top_frames=0,wait_frames=0;EnemyState*b;
+    load(&p,"DEEP","build/DFOREST.KLV");game_init(&g,&p);for(i=0;i<p.level.animal_count;++i)if(i!=6)g.enemies[i].pacified=1;b=&g.enemies[6];g.player.invulnerable=255;
+    for(i=0;i<1400;++i){step(&g,1);if(b->state==KOLO_AI_CLIMB)seen_climb=1;if(b->state==KOLO_AI_TOP_WAIT){seen_top=1;++top_frames;}if(b->state==KOLO_AI_DESCEND)seen_down=1;if(seen_down&&b->state==KOLO_AI_WAIT){seen_wait=1;++wait_frames;}if(seen_wait&&b->state==KOLO_AI_PATROL)break;}
+    assert(seen_climb&&seen_top&&seen_down&&seen_wait&&b->state==KOLO_AI_PATROL);assert(top_frames==30&&wait_frames==30);assets_free(&p);
+}
+
 static void test_dialogue_and_gate(void)
 {
     AssetPack p;GameState g;unsigned guardian=0,i;load(&p,"GARDEN","build/GARDEN.KLV");game_init(&g,&p);
@@ -81,6 +99,23 @@ static void test_dialogue_and_gate(void)
     assert(!game_exit_ready(&g));g.red_collected=6;assert(game_exit_ready(&g));assets_free(&p);
 }
 
+static void test_optional_rewards(void)
+{
+    AssetPack p;GameState g;unsigned i,animal=0;load(&p,"GARDEN","build/GARDEN.KLV");game_init(&g,&p);
+    for(i=0;i<p.level.animal_count;++i)if(p.level.animals[i].id==p.level.encounters[1].animal_id)animal=i;
+    g.player.x=g.enemies[animal].x;g.player.y=g.enemies[animal].y;g.player.invulnerable=0;assert(game_try_talk(&g));assert(g.active_encounter==1);assert(game_answer_dialogue(&g,0)==1);assert(g.blue_timer==300&&g.enemies[animal].pacified);assets_free(&p);
+    load(&p,"FOREST","build/SFOREST.KLV");game_init(&g,&p);for(i=0;i<p.level.animal_count;++i)if(p.level.animals[i].id==p.level.encounters[1].animal_id)animal=i;
+    g.player.hp=50;g.player.lives=2;g.player.x=g.enemies[animal].x;g.player.y=g.enemies[animal].y;assert(game_try_talk(&g));assert(g.active_encounter==1);assert(game_answer_dialogue(&g,2)==1);assert(g.player.hp==100&&g.player.lives==3);assets_free(&p);
+}
+
+static void test_sequential_carry(void)
+{
+    AssetPack garden,forest,deep;GameState g;load(&garden,"GARDEN","build/GARDEN.KLV");load(&forest,"FOREST","build/SFOREST.KLV");load(&deep,"DEEP","build/DFOREST.KLV");
+    game_init(&g,&garden);g.player.hp=63;g.player.lives=2;g.blue_timer=200;game_init_carry(&g,&forest,g.player.hp,g.player.lives);assert(g.player.hp==63&&g.player.lives==2&&g.blue_timer==0&&g.red_collected==0);
+    g.player.hp=41;g.player.lives=4;game_init_carry(&g,&deep,g.player.hp,g.player.lives);assert(g.player.hp==41&&g.player.lives==4&&g.blue_timer==0);
+    game_init(&g,&deep);assert(g.player.hp==100&&g.player.lives==3);assets_free(&garden);assets_free(&forest);assets_free(&deep);
+}
+
 static void test_codewords(void)
 {
     assert(campaign_codeword_stage("REPKA")==0);assert(campaign_codeword_stage("teremok")==1);assert(campaign_codeword_stage("Morozko")==2);assert(campaign_codeword_stage("bogus")==-1);
@@ -88,5 +123,5 @@ static void test_codewords(void)
 
 int main(void)
 {
-    test_assets_and_levels();test_crc_rejection();test_surface_physics();test_boost_and_pies();test_damage_lives_checkpoint();test_ai_freeze();test_dialogue_and_gate();test_codewords();puts("host gameplay tests: PASS");return 0;
+    test_assets_and_levels();test_crc_rejection();test_surface_physics();test_boost_and_pies();test_damage_lives_checkpoint();test_ai_freeze();test_repeated_stomp_refresh();test_complete_bear_cycle();test_dialogue_and_gate();test_optional_rewards();test_sequential_carry();test_codewords();puts("host gameplay tests: PASS");return 0;
 }

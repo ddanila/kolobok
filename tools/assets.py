@@ -369,7 +369,37 @@ def validate_raster_encodings(tiles: Image.Image, sprites: Image.Image) -> None:
     assert len(player_frames) == PLAYER_FRAMES
 
 
-def make_bank(tiles: Image.Image, sprites: Image.Image, theme: int) -> bytes:
+def themed_art(tiles: Image.Image, sprites: Image.Image, bank_name: str) -> tuple[Image.Image, Image.Image]:
+    """Produce bank-specific indexed art without changing transparency."""
+    tile_copy, sprite_copy = tiles.copy(), sprites.copy()
+    if bank_name == "INTRO":
+        sprite_copy = sprite_copy.point(lambda c: 31 if c == 14 else c)
+    elif bank_name == "FOREST":
+        tile_copy = tile_copy.point(lambda c: 6 if c == 7 else c)
+        sprite_copy = sprite_copy.point(lambda c: 26 if c == 20 else c)
+    elif bank_name == "DEEP":
+        tile_copy = tile_copy.point(lambda c: 5 if c in (6, 7) else c)
+        sprite_copy = sprite_copy.point(lambda c: 23 if c == 31 else (24 if c == 22 else c))
+    return tile_copy, sprite_copy
+
+
+def bank_palette(bank_name: str) -> list[tuple[int, int, int]]:
+    if bank_name == "GARDEN":
+        return COLORS
+    palette = []
+    for index, (r, g, b) in enumerate(COLORS):
+        if bank_name == "INTRO":
+            rgb = (min(255, r + 14), min(255, g + 5), max(0, b - 6))
+        elif bank_name == "FOREST":
+            rgb = (r * 4 // 5, min(255, g * 9 // 10 + (8 if index in (5, 6, 7) else 0)), b * 4 // 5)
+        else:
+            rgb = (r * 11 // 20, g * 3 // 5, min(255, b * 7 // 10 + (8 if index in (1, 2, 3, 27, 28) else 0)))
+        palette.append(rgb if index else (0, 0, 0))
+    return palette
+
+
+def make_bank(tiles: Image.Image, sprites: Image.Image, theme: int, bank_name: str) -> bytes:
+    tiles, sprites = themed_art(tiles, sprites, bank_name)
     sprite_spans = []
     planar_sprite_spans = []
     for index in range(SPRITE_COUNT):
@@ -387,7 +417,7 @@ def make_bank(tiles: Image.Image, sprites: Image.Image, theme: int) -> bytes:
     payload = bytearray(b"KBANK4\0\0")
     payload.extend(struct.pack("<6H", 4, theme, TILE_COUNT,
                                SPRITE_COUNT, TILE, TILE))
-    for r, g, b in COLORS:
+    for r, g, b in bank_palette(bank_name):
         payload.extend((r >> 2, g >> 2, b >> 2))
     for index in range(TILE_COUNT):
         tile = tiles.crop((index * TILE, 0, (index + 1) * TILE, TILE))
@@ -406,7 +436,7 @@ def make_bank(tiles: Image.Image, sprites: Image.Image, theme: int) -> bytes:
 
 def write_pack(out: Path, tiles: Image.Image, sprites: Image.Image) -> None:
     names = (("INTRO", 0), ("GARDEN", 0), ("FOREST", 1), ("DEEP", 2))
-    banks = [(name, make_bank(tiles, sprites, theme)) for name, theme in names]
+    banks = [(name, make_bank(tiles, sprites, theme, name)) for name, theme in names]
     header_size = 12 + len(banks) * 16
     offset = header_size
     payload = bytearray(b"KOLODAT4")

@@ -48,15 +48,15 @@ build:
 | Original C renderer, 386DX-40 profile | 17.0 fps | not sustainable |
 | Mode 13h optimized framebuffer, 386DX-40 profile | 45.4–45.5 fps | 30.3 fps |
 | MVP planar Mode X renderer | 68.2 fps | 30.3 fps |
-| Expanded Deep Forest worst case | 57.5 fps | 29.5 fps |
+| Expanded Deep Forest worst case | 57.4 fps | 30.3 fps |
 
 The expanded worst-case workload remains 91% above its 30 Hz frame deadline and
 14.8% above the raw regression floor while drawing the larger enemy set, three
 tree types, expanded HUD, and material art.
 
-The representative 60-frame expanded profile measured 459,548 background ticks,
-397,242 tile ticks, 181,293 sprite ticks, 153,561 HUD ticks, and 992 presentation
-ticks. That averages about 6.42 ms, 5.55 ms, 2.53 ms, 2.15 ms, and 0.014 ms per frame,
+The representative 60-frame expanded profile measured 454,274 background ticks,
+411,536 tile ticks, 175,859 sprite ticks, 160,722 HUD ticks, and 997 presentation
+ticks. That averages about 6.35 ms, 5.75 ms, 2.46 ms, 2.25 ms, and 0.014 ms per frame,
 respectively. Game simulation, loop overhead, and profiler reads are outside or
 between those buckets.
 
@@ -71,6 +71,8 @@ between those buckets.
 - VGA-resident planar tile patterns copied with write-mode-1 latches.
 - Generic opaque-span sprites for clipped edges and 16 alignment/plane-specific
   RLE span streams per sprite for the common fully visible path.
+- Paragraph-aligned far-memory resource banks and segment-aware assembly
+  blitters keep the active bank out of the program's near-data segment.
 - Four cached, panning-aware static HUD variants; HP, lives, red count and blue
   boost time are drawn dynamically.
 - A cached title screen whose blinking prompt is restored and redrawn as a dirty
@@ -87,14 +89,15 @@ of unchained VGA and page flipping in the
 
 ## Memory use
 
-The v4 archive is about 89 KiB, but each indexed active bank is about 22 KiB and
+The v4 archive is about 88 KiB, but each indexed active bank is about 22 KiB and
 stays below the enforced 60 KiB limit. The game and editor executables are about
-39 KiB and 41 KiB. The
+47 KiB and 49 KiB. The
 renderer allocates one 64,000-byte conventional-memory scratch image for CRC test
 readback; normal drawing does not use it as a back buffer. Together with the
 loaded program, assets, game state, and stack, active conventional-memory data is
-well below 200 KiB. The DOS programs use an explicit 8 KiB stack after expansion
-of the level and campaign state. Future caches may deliberately use more conventional memory
+well below 200 KiB. The game uses an explicit 8 KiB stack and the editor a
+16 KiB stack after expansion of the level and campaign state. Future caches may
+deliberately use more conventional memory
 when profiling shows a useful gain; 400 KiB is not treated as a hard ceiling.
 
 VGA memory is the tighter fixed resource. The two 16,400-address game pages,

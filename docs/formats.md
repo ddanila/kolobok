@@ -11,6 +11,10 @@ The archive header is `KOLODAT4`, version and bank count (`u16`), followed by
 `u32` size. Banks are `KBANK4`, contain version/theme/count metadata, a 768-byte
 VGA DAC palette, planar 16×16 tiles, generic sprite spans, alignment-specific
 Mode X spans, and a trailing CRC-32. The build rejects banks of 60 KiB or more.
+The complete archive may exceed 64 KiB. On DOS, the selected bank is read in
+chunks into its own paragraph-aligned far-memory segment. Resource pointers and
+the optimized tile/sprite paths retain the source segment, so no near-data copy
+or monolithic archive allocation is required.
 
 ## KLV4
 

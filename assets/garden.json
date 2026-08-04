@@ -6,7 +6,7 @@
   "cloud_seed": 12648430,
   "required_red_berries": 6,
   "ground_y": 9,
-  "pits": [[25, 26], [62, 63], [86, 87]],
+  "pits": [[25, 25], [62, 62], [86, 86]],
   "surfaces": [
     {"material": "sand", "range": [32, 43]},
     {"material": "sand", "range": [72, 80]}
@@ -20,12 +20,12 @@
   "exit": [93, 8],
   "home": [2, 8],
   "pickups": [
-    {"id": 1, "type": "red_berry", "at": [14, 6]},
+    {"id": 1, "type": "red_berry", "at": [20, 8]},
     {"id": 2, "type": "red_berry", "at": [29, 8]},
-    {"id": 3, "type": "red_berry", "at": [37, 5]},
-    {"id": 4, "type": "red_berry", "at": [52, 6]},
+    {"id": 3, "type": "red_berry", "at": [42, 8]},
+    {"id": 4, "type": "red_berry", "at": [57, 8]},
     {"id": 5, "type": "red_berry", "at": [70, 8]},
-    {"id": 6, "type": "red_berry", "at": [79, 5]},
+    {"id": 6, "type": "red_berry", "at": [82, 8]},
     {"id": 7, "type": "blue_berry", "at": [22, 8]},
     {"id": 8, "type": "blue_berry", "at": [67, 8]},
     {"id": 9, "type": "small_pie", "at": [44, 8]},

@@ -25,6 +25,7 @@ FILES
 
 OPTIONS
   -nosound  -nomusic  -selftest  -benchmark  -capture [scene]
+  -playtest (deterministic developer campaign test)
 
 REQUIREMENTS
   386DX-40 or faster, VGA, DOS 3.3+, and AdLib-compatible OPL2 (optional).

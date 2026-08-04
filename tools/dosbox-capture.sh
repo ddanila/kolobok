@@ -9,7 +9,7 @@ crc_manifest="$capture_dir/CRC32.txt"
 
 mkdir -p "$capture_dir"
 printf 'DOSBox-X Mode X displayed-page CRC-32 reference set\n' > "$crc_manifest"
-for scene in intro garden forest deep dialogue frozen gameover home; do
+for scene in intro garden forest deep dialogue frozen gameover home credits; do
     rm -f "$capture_log" "$capture_ppm"
     SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy dosbox-x \
         -conf "$project_root/dosbox-x.conf" -silent -fastlaunch -time-limit 20 \

@@ -15,5 +15,8 @@ int music_is_detected(void);
 void music_play(unsigned track);
 void music_tick(void);
 void music_set_sink(MusicRegisterSink sink, void *context);
+u32 music_debug_ticks(void);
+u32 music_debug_events(void);
+u8 music_debug_voice_mask(void);
 
 #endif

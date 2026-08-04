@@ -119,8 +119,10 @@ static void latch_copy_386(unsigned source, unsigned target, unsigned count);
     "pop ds" \
     parm [si] [di] [cx] modify [ax cx si di es];
 
-static void blit_tile_plane_386(const unsigned char *source, unsigned target);
+static void blit_tile_plane_386(const unsigned char __far *source, unsigned target);
 #pragma aux blit_tile_plane_386 = \
+    "push ds" \
+    "mov ds,dx" \
     "mov ax,0a000h" \
     "mov es,ax" \
     "mov cx,16" \
@@ -130,16 +132,20 @@ static void blit_tile_plane_386(const unsigned char *source, unsigned target);
     "add di,78" \
     "dec cx" \
     "jnz mx_tile_row" \
-    parm [si] [di] modify [ax cx si di es];
+    "pop ds" \
+    parm [dx si] [di] modify [ax cx si di es];
 
-static void copy_to_vram_386(const unsigned char *source, unsigned target,
+static void copy_to_vram_386(const unsigned char __far *source, unsigned target,
                              unsigned count);
 #pragma aux copy_to_vram_386 = \
+    "push ds" \
+    "mov ds,dx" \
     "mov ax,0a000h" \
     "mov es,ax" \
     "cld" \
     "rep movsb" \
-    parm [si] [di] [cx] modify [ax cx si di es];
+    "pop ds" \
+    parm [dx si] [di] [cx] modify [ax cx si di es];
 
 static void latch_tile_386(unsigned source, unsigned target);
 #pragma aux latch_tile_386 = \
@@ -301,12 +307,12 @@ static void draw_number(int x, int y, unsigned value, unsigned char color)
     draw_text(x, y, text + pos, color, 1);
 }
 
-static void blit_tile_plane(const unsigned char *source, int x, int y,
+static void blit_tile_plane(KoloConstFarPtr source, int x, int y,
                             unsigned plane)
 {
     int sy;
     int relative = ((int)plane - (x & 3)) & 3;
-    const unsigned char *plane_source = source + relative * 64;
+    KoloConstFarPtr plane_source = source + relative * 64;
     if (x >= 0 && x <= LOGICAL_W - 16 && y >= 0 && y <= SCREEN_H - 16) {
         blit_tile_plane_386(plane_source,
             draw_base + (unsigned)y * PITCH + ((x + relative) >> 2));
@@ -328,7 +334,7 @@ static void blit_tile_plane(const unsigned char *source, int x, int y,
 static void blit_sprite_plane(const AssetPack *assets, unsigned sprite,
                               int x, int y, unsigned plane)
 {
-    const unsigned char *source;
+    KoloConstFarPtr source;
     int sy;
     if (sprite >= assets->sprite_count || x <= -16 || x >= LOGICAL_W ||
         y <= -16 || y >= SCREEN_H) return;
@@ -835,30 +841,32 @@ void video_render_game_over(const GameState *game)
     render_state = RENDER_WIN;
 }
 
+static void draw_grandparent(int x,int y,int grandmother,unsigned phase)
+{
+    unsigned char skin=20,clothes=grandmother?30:27,hair=grandmother?23:22;
+    fill_rect(x+5,y,10,9,skin);fill_rect(x+4,y-2,12,4,hair);fill_rect(x+7,y+3,2,2,1);fill_rect(x+12,y+3,2,2,1);
+    fill_rect(x+3,y+9,14,20,clothes);fill_rect(x+5,y+29,4,9,9);fill_rect(x+12,y+29,4,9,9);
+    if(phase&1){fill_rect(x-3,y+11,7,4,skin);fill_rect(x+17,y+18,8,4,skin);}else{fill_rect(x-1,y+18,6,4,skin);fill_rect(x+17,y+11,7,4,skin);}
+    if(grandmother)fill_rect(x+1,y+25,18,5,clothes);else fill_rect(x+4,y+15,12,3,21);
+}
+
+static void draw_oven(int x,int y,unsigned phase)
+{
+    fill_rect(x,y,54,55,23);fill_rect(x+5,y+5,44,50,4);fill_rect(x+12,y+26,30,25,9);
+    fill_rect(x+16,y+31,22,16,1);fill_rect(x+20,y+38,5,8,phase&1?19:13);fill_rect(x+28,y+34,6,12,phase&1?13:19);
+    fill_rect(x+9,y-5,8,10,23);fill_rect(x+34,y-9,9,14,23);
+}
+
 void video_render_intro(const AssetPack *assets, unsigned scene, u32 ticks)
 {
-    GameState preview;
-    game_init(&preview, assets);
-    preview.camera_x = 0;
-    draw_base = next_game_page ? GAME_PAGE_1 : GAME_PAGE_0; next_game_page ^= 1;
-    draw_world(&preview, 0);
-    fill_rect(38, 34, 244, 106, 21);
-    fill_rect(43, 39, 234, 96, 26);
-    if (scene == 0) {
-        draw_text(62, 48, "GRANDPARENTS BAKE KOLOBOK", 15, 1);
-        fill_rect(68, 78, 38, 42, 9); fill_rect(74, 84, 26, 25, 19);
-        draw_text(127, 90, "BY THE OVEN", 31, 1);
-    } else if (scene == 1) {
-        draw_text(73, 50, "COOLING ON THE WINDOW", 15, 1);
-        fill_rect(70, 111, 180, 8, 21);
-        blit_sprite(assets, 0, 151, 94);
-    } else if (scene == 2) {
-        draw_text(76, 50, "KOLOBOK WAKES AND ROLLS", 15, 1);
-        fill_rect(65, 112, 190, 8, 21);
-        blit_sprite(assets, (unsigned)((ticks >> 2) & 3), 70 + (int)(ticks % 150), 95);
-    } else {
-        draw_text(78, 51, "OUT INTO THE GARDEN", 15, 1);
-        blit_sprite(assets, 1, 153, 107 + (int)(ticks % 20));
+    GameState preview;unsigned phase=(unsigned)(ticks/8);game_init(&preview,assets);preview.camera_x=0;
+    draw_base=next_game_page?GAME_PAGE_1:GAME_PAGE_0;next_game_page^=1;
+    if(scene==3){int fall=(int)(ticks*3/2);draw_world(&preview,0);draw_text(78,34,"OUT INTO THE GARDEN",15,1);draw_cottage(assets,0);blit_sprite(assets,(unsigned)((ticks>>2)&3),145+(int)ticks/3,55+(fall<92?fall:92));}
+    else{
+        draw_world(&preview,0);fill_rect(22,25,276,127,21);fill_rect(27,30,266,117,26);fill_rect(27,126,266,21,9);
+        if(scene==0){int dough=(int)(ticks<80?ticks/5:16);draw_text(62,36,"GRANDPARENTS BAKE KOLOBOK",15,1);draw_oven(220,66,phase);draw_grandparent(53,78,1,phase);draw_grandparent(112,78,0,phase+1);fill_rect(151,109,48,6,21);fill_rect(166-dough/2,101-dough/3,10+dough,8+dough/3,14);if(ticks>92)blit_sprite(assets,0,230,83);}
+        else if(scene==1){int walk=(int)(ticks<90?ticks:90);draw_text(73,36,"COOLING ON THE WINDOW",15,1);fill_rect(56,105,204,9,21);fill_rect(194,55,58,50,1);fill_rect(199,60,48,40,28);draw_grandparent(52+walk,72,1,phase);blit_sprite(assets,0,72+walk,80);if(ticks>92){blit_sprite(assets,0,211,88);fill_rect(216,76-(int)(ticks%12),2,6,4);}}
+        else{int roll=65+(int)(ticks*11/10);if(roll>238)roll=238;draw_text(68,36,"KOLOBOK WAKES TURNS AND ROLLS",15,1);fill_rect(55,112,210,8,21);fill_rect(61,58,198,54,1);fill_rect(67,64,186,42,28);draw_grandparent(35,77,1,phase);draw_grandparent(268,77,0,phase+1);blit_sprite(assets,(unsigned)((ticks>>2)&3),roll,95);if((ticks/12)&1)draw_text(139,73,"I AM AWAKE",31,1);}
     }
     draw_text(56, 151, "ENTER NEXT  ESC SKIP", 23, 1);
     pending_base = draw_base; pending_pan = 0; flip_pending = 1; render_state = RENDER_GAME;
@@ -866,15 +874,23 @@ void video_render_intro(const AssetPack *assets, unsigned scene, u32 ticks)
 
 void video_render_ending(const GameState *game, u32 ticks)
 {
-    video_render_game(game);
-    fill_rect(28 + draw_pan, 38, 264, 126, 1);
-    fill_rect(32 + draw_pan, 42, 256, 118, 21);
-    draw_text(69 + draw_pan, 52, "KOLOBOK CAME HOME", 15, 2);
-    draw_text(72 + draw_pan, 88, "GRANDMOTHER GRANDFATHER", 31, 1);
-    draw_text(84 + draw_pan, 103, "AND ALL THE BERRIES", 31, 1);
-    if ((ticks / 30) & 1) draw_text(111 + draw_pan, 130, "THE END", 14, 2);
-    draw_text(88 + draw_pan, 151, "ENTER FOR CREDITS", 23, 1);
+    int arrival=(int)(ticks<100?ticks:100);video_render_game(game);
+    fill_rect(18+draw_pan,31,284,148,1);fill_rect(22+draw_pan,35,276,140,21);fill_rect(22+draw_pan,143,276,32,9);
+    draw_text(63+draw_pan,43,"KOLOBOK ROLLS HOME AGAIN",15,1);draw_cottage(game->assets,(int)game->assets->level.home.x*16-190);
+    blit_sprite(game->assets,(unsigned)((ticks>>2)&3),285-arrival*2,126);
+    if(ticks>55){draw_grandparent(88+draw_pan,98,1,(unsigned)(ticks/8));draw_grandparent(130+draw_pan,98,0,(unsigned)(ticks/8)+1);}
+    if(ticks>105)draw_text(69+draw_pan,70,"WELCOME HOME DEAR KOLOBOK",31,1);
+    if(ticks>145){draw_text(75+draw_pan,84,"THE BERRIES ARE SAFE",14,1);draw_text(111+draw_pan,153,"THE END",15,2);}
+    if(ticks>180&&((ticks/20)&1))draw_text(88+draw_pan,166,"ENTER FOR CREDITS",23,1);
     render_state = RENDER_WIN;
+}
+
+void video_render_credits(const GameState *game,u32 ticks)
+{
+    static const char*lines[]={"KOLOBOK EXPANDED ADVENTURE","DESIGN AND PROGRAMMING","D DANILA","ORIGINAL OPL ARRANGEMENTS","PUBLIC DOMAIN FOLK MELODY","TCHAIKOVSKY COLLECTION 1869","BUILT WITH OPEN WATCOM","TESTED WITH DOSBOX X","THANK YOU FOR PLAYING"};
+    unsigned i;int base=188-(int)(ticks/2);video_render_game(game);fill_rect(0,24,LOGICAL_W,176,1);
+    for(i=0;i<sizeof(lines)/sizeof(lines[0]);++i){int y=base+(int)i*25;if(y>27&&y<190)draw_text(160-(int)strlen(lines[i])*3+draw_pan,y,lines[i],i==0?14:i==8?31:23,1);}
+    if(base+(int)(sizeof(lines)/sizeof(lines[0]))*25<45)draw_text(82+draw_pan,166,"ENTER FOR TITLE",15,1);render_state=RENDER_WIN;
 }
 
 void video_render_editor(const GameState *game, unsigned cursor_x, unsigned cursor_y,
@@ -906,7 +922,7 @@ void video_render_editor_help(const GameState *game)
     draw_text(34+draw_pan,74,"PGUP PGDN SELECT  SPACE PAINT",23,1);
     draw_text(34+draw_pan,88,"DELETE ERASE  ENTER PROPERTIES",23,1);
     draw_text(34+draw_pan,102,"1 START  2 CHECKPOINT  3 EXIT",23,1);
-    draw_text(34+draw_pan,116,"F2 SAVE  F3 VALIDATE  F4 THEME",23,1);
+    draw_text(34+draw_pan,116,"F2 SAVE  F3 VALIDATE  F4 LEVEL",23,1);
     draw_text(34+draw_pan,130,"ESC SAVE DISCARD CANCEL",23,1);
     draw_text(88+draw_pan,151,"F1 CLOSE HELP",31,1);render_state=RENDER_PAUSE;
 }
@@ -918,6 +934,33 @@ void video_render_editor_exit(const GameState *game)
     draw_text(78+draw_pan,94,"ENTER SAVE AND QUIT",31,1);
     draw_text(78+draw_pan,108,"DELETE DISCARD",23,1);
     draw_text(78+draw_pan,122,"ESC CANCEL",23,1);render_state=RENDER_PAUSE;
+}
+
+static const KoloEncounter *video_encounter_for(const LevelData *level,u16 animal_id)
+{
+    unsigned i;for(i=0;i<level->encounter_count;++i)if(level->encounters[i].animal_id==animal_id)return &level->encounters[i];return 0;
+}
+
+void video_render_editor_properties(const GameState *game, unsigned kind,
+                                    unsigned index, unsigned field)
+{
+    static const char *pickup_types[4]={"RED BERRY","BLUE BERRY","SMALL PIE","BIG PIE"};
+    static const char *animal_types[4]={"RABBIT","FOX","WOLF","BEAR"};
+    static const char *tree_types[3]={"FIR","BIRCH","OAK"};
+    static const char *rewards[3]={"NONE","BLUE BERRY","SMALL PIE"};
+    static const char *animal_fields[10]={"SUBTYPE","FLAGS","DIALOGUE ID","REWARD","CORRECT ANSWER","PATROL LEFT","PATROL RIGHT","CLIMB TREE","CLIMB TOP","CLIMB BASE"};
+    const LevelData *level=&game->assets->level;unsigned row,count=kind==0?2:kind==1?10:3;
+    video_render_game(game);fill_rect(25+draw_pan,25,270,158,1);fill_rect(29+draw_pan,29,262,150,5);
+    draw_text(80+draw_pan,34,kind==0?"PICKUP PROPERTIES":kind==1?"ANIMAL PROPERTIES":kind==2?"TREE PROPERTIES":"LEVEL PROPERTIES",15,1);
+    for(row=0;row<count;++row){int y=50+(int)row*12;draw_text(40+draw_pan,y,row==field?"1":" ",14,1);
+        if(kind==0&&index<level->pickup_count){const KoloPickup*p=&level->pickups[index];draw_text(51+draw_pan,y,row==0?"SUBTYPE":"FLAGS",23,1);if(row==0)draw_text(160+draw_pan,y,pickup_types[p->type],row==field?31:15,1);else draw_number(160+draw_pan,y,p->flags,row==field?31:15);}
+        else if(kind==2&&index<level->tree_count){const KoloTree*t=&level->trees[index];draw_text(51+draw_pan,y,row==0?"TREE TYPE":row==1?"FLAGS":"HEIGHT",23,1);if(row==0)draw_text(160+draw_pan,y,tree_types[t->type],row==field?31:15,1);else draw_number(160+draw_pan,y,row==1?t->flags:t->height,row==field?31:15);}
+        else if(kind==3){draw_text(51+draw_pan,y,row==0?"THEME":row==1?"REQUIRED RED":"CLOUD SEED",23,1);if(row==0)draw_text(160+draw_pan,y,level->theme==0?"GARDEN":level->theme==1?"FOREST":"DEEP",row==field?31:15,1);else draw_number(160+draw_pan,y,row==1?level->required_red:(unsigned)level->cloud_seed,row==field?31:15);}
+        else if(kind==1&&index<level->animal_count){const KoloAnimalSpawn*a=&level->animals[index];const KoloEncounter*e=video_encounter_for(level,a->id);draw_text(51+draw_pan,y,animal_fields[row],23,1);
+            if(row==0)draw_text(173+draw_pan,y,animal_types[a->type],row==field?31:15,1);else if(row==3)draw_text(173+draw_pan,y,rewards[e?e->reward:0],row==field?31:15,1);
+            else if(row==7&&a->tree_id==0xffff)draw_text(173+draw_pan,y,"NONE",row==field?31:15,1);else{unsigned value=row==1?a->flags:row==2?(a->dialogue_id==0xffff?0:a->dialogue_id):row==4?(e?e->correct+1:1):row==5?a->min_x:row==6?a->max_x:row==7?a->tree_id:row==8?a->climb_min:a->climb_max;draw_number(173+draw_pan,y,value,row==field?31:15);}}
+    }
+    draw_text(46+draw_pan,169,"ARROWS EDIT  ENTER OK  ESC CANCEL",31,1);render_state=RENDER_PAUSE;
 }
 
 static void reconstruct_page(unsigned base, unsigned char pan)

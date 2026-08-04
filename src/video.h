@@ -26,10 +26,13 @@ void video_render_dialogue(const GameState *game, unsigned selection);
 void video_render_game_over(const GameState *game);
 void video_render_intro(const AssetPack *assets, unsigned scene, u32 ticks);
 void video_render_ending(const GameState *game, u32 ticks);
+void video_render_credits(const GameState *game, u32 ticks);
 void video_render_editor(const GameState *game, unsigned cursor_x, unsigned cursor_y,
                          unsigned layer, unsigned tool, int dirty, int valid);
 void video_render_editor_help(const GameState *game);
 void video_render_editor_exit(const GameState *game);
+void video_render_editor_properties(const GameState *game, unsigned kind,
+                                    unsigned index, unsigned field);
 u32 video_frame_crc(void);
 u32 video_vram_crc(void);
 void video_profile_enable(int enabled);
