@@ -168,16 +168,157 @@ def validate(level: dict, cells: bytearray) -> None:
         assert cells[(enemy["y"] + 1) * width + enemy["x"]] in {1, 4}
 
 
+def encode_sprite_spans(sprite: Image.Image) -> bytes:
+    pixels = sprite.tobytes()
+    encoded = bytearray()
+    for y in range(TILE):
+        runs: list[tuple[int, bytes]] = []
+        x = 0
+        while x < TILE:
+            while x < TILE and pixels[y * TILE + x] == TRANSPARENT:
+                x += 1
+            if x == TILE:
+                break
+            start = x
+            while x < TILE and pixels[y * TILE + x] != TRANSPARENT:
+                x += 1
+            runs.append((start, pixels[y * TILE + start:y * TILE + x]))
+        encoded.append(len(runs))
+        for start, colors in runs:
+            encoded.extend((start, len(colors)))
+            encoded.extend(colors)
+    return bytes(encoded)
+
+
+def decode_sprite_spans(encoded: bytes) -> bytes:
+    decoded = bytearray(TILE * TILE)
+    cursor = 0
+    for y in range(TILE):
+        run_count = encoded[cursor]
+        cursor += 1
+        for _ in range(run_count):
+            x, length = encoded[cursor:cursor + 2]
+            cursor += 2
+            assert x < TILE and length > 0 and x + length <= TILE
+            decoded[y * TILE + x:y * TILE + x + length] = encoded[cursor:cursor + length]
+            cursor += length
+    assert cursor == len(encoded)
+    return bytes(decoded)
+
+
+def encode_planar_tile(tile: Image.Image) -> bytes:
+    pixels = tile.tobytes()
+    encoded = bytearray()
+    for plane in range(4):
+        for y in range(TILE):
+            for x in range(plane, TILE, 4):
+                encoded.append(pixels[y * TILE + x])
+    return bytes(encoded)
+
+
+def decode_planar_tile(encoded: bytes) -> bytes:
+    assert len(encoded) == TILE * TILE
+    decoded = bytearray(TILE * TILE)
+    cursor = 0
+    for plane in range(4):
+        for y in range(TILE):
+            for x in range(plane, TILE, 4):
+                decoded[y * TILE + x] = encoded[cursor]
+                cursor += 1
+    return bytes(decoded)
+
+
+def encode_planar_sprite_spans(sprite: Image.Image, alignment: int, plane: int) -> bytes:
+    pixels = sprite.tobytes()
+    encoded = bytearray()
+    for y in range(TILE):
+        samples = []
+        for x in range(TILE):
+            if (alignment + x) % 4 == plane and pixels[y * TILE + x] != TRANSPARENT:
+                samples.append(((alignment + x) // 4, pixels[y * TILE + x]))
+        runs: list[tuple[int, bytes]] = []
+        cursor = 0
+        while cursor < len(samples):
+            start = samples[cursor][0]
+            colors = bytearray((samples[cursor][1],))
+            cursor += 1
+            while cursor < len(samples) and samples[cursor][0] == start + len(colors):
+                colors.append(samples[cursor][1])
+                cursor += 1
+            runs.append((start, bytes(colors)))
+        encoded.append(len(runs))
+        for start, colors in runs:
+            encoded.extend((start, len(colors)))
+            encoded.extend(colors)
+    return bytes(encoded)
+
+
+def decode_planar_sprite_spans(encoded: bytes, alignment: int, plane: int) -> bytes:
+    decoded = bytearray(TILE * TILE)
+    cursor = 0
+    for y in range(TILE):
+        run_count = encoded[cursor]
+        cursor += 1
+        for _ in range(run_count):
+            start, length = encoded[cursor:cursor + 2]
+            cursor += 2
+            assert length > 0 and start + length <= 5
+            for sample in range(length):
+                x = (start + sample) * 4 + plane - alignment
+                assert 0 <= x < TILE and (alignment + x) % 4 == plane
+                decoded[y * TILE + x] = encoded[cursor + sample]
+            cursor += length
+    assert cursor == len(encoded)
+    return bytes(decoded)
+
+
+def validate_raster_encodings(tiles: Image.Image, sprites: Image.Image) -> None:
+    for index in range(6):
+        tile = tiles.crop((index * TILE, 0, (index + 1) * TILE, TILE))
+        assert decode_planar_tile(encode_planar_tile(tile)) == tile.tobytes()
+    for index in range(8):
+        sprite = sprites.crop((index * TILE, 0, (index + 1) * TILE, TILE))
+        pixels = sprite.tobytes()
+        assert decode_sprite_spans(encode_sprite_spans(sprite)) == pixels
+        for alignment in range(4):
+            for plane in range(4):
+                encoded = encode_planar_sprite_spans(sprite, alignment, plane)
+                decoded = decode_planar_sprite_spans(encoded, alignment, plane)
+                expected = bytes(
+                    color if (alignment + x) % 4 == plane else TRANSPARENT
+                    for y in range(TILE)
+                    for x, color in enumerate(pixels[y * TILE:(y + 1) * TILE])
+                )
+                assert decoded == expected
+
+
 def write_pack(out: Path, tiles: Image.Image, sprites: Image.Image, level: dict, cells: bytearray) -> None:
+    sprite_spans = []
+    planar_sprite_spans = []
+    for index in range(8):
+        sprite = sprites.crop((index * TILE, 0, (index + 1) * TILE, TILE))
+        encoded = encode_sprite_spans(sprite)
+        assert decode_sprite_spans(encoded) == sprite.tobytes()
+        sprite_spans.append(encoded)
+        for alignment in range(4):
+            for plane in range(4):
+                planar_sprite_spans.append(
+                    encode_planar_sprite_spans(sprite, alignment, plane)
+                )
+    span_blob = b"".join(sprite_spans)
+    planar_span_blob = b"".join(planar_sprite_spans)
     payload = bytearray(b"KOLODAT1")
-    payload.extend(struct.pack("<9H", 1, level["width"], level["height"], 6, 8,
+    payload.extend(struct.pack("<9H", 3, level["width"], level["height"], 6, 8,
                                len(level["berries"]), len(level["enemies"]), TILE, TILE))
     for r, g, b in COLORS:
         payload.extend((r >> 2, g >> 2, b >> 2))
     for index in range(6):
-        payload.extend(tiles.crop((index * TILE, 0, (index + 1) * TILE, TILE)).tobytes())
-    for index in range(8):
-        payload.extend(sprites.crop((index * TILE, 0, (index + 1) * TILE, TILE)).tobytes())
+        tile = tiles.crop((index * TILE, 0, (index + 1) * TILE, TILE))
+        payload.extend(encode_planar_tile(tile))
+    payload.extend(struct.pack("<H", len(span_blob)))
+    payload.extend(span_blob)
+    payload.extend(struct.pack("<H", len(planar_span_blob)))
+    payload.extend(planar_span_blob)
     payload.extend(cells)
     for x, y in level["berries"]:
         payload.extend(struct.pack("<HH", x * TILE + 4, y * TILE + 2))
@@ -203,8 +344,9 @@ def main() -> None:
     level, cells = load_level(ROOT / "assets" / "level.json")
     validate(level, cells)
     tiles, sprites = draw_tiles(), draw_sprites()
+    validate_raster_encodings(tiles, sprites)
     if args.check:
-        print("assets: PASS (8 berries, loop platforms, indexed palette)")
+        print("assets: PASS (level, palette, planar tiles, sprite spans)")
         return
     source_dir = ROOT / "assets" / "generated"
     source_dir.mkdir(parents=True, exist_ok=True)

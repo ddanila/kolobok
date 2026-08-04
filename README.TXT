@@ -21,7 +21,8 @@ OPTIONS
   KOLOBOK.EXE -benchmark  Measure render and 30 Hz pacing performance
 
 REQUIREMENTS
-  386DX-40 or faster, VGA, DOS 3.3 or later, about 640 KB conventional memory.
+  386DX-40 or faster, VGA, DOS 3.3 or later, and at least 160 KB of free
+  conventional memory. The game uses planar 320x200x256 Mode X.
 
 Source and build instructions: https://github.com/ddanila/kolobok
 License: MIT

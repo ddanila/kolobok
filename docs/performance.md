@@ -20,17 +20,23 @@ profile result.
 
 `KOLOBOK.EXE -benchmark` uses the DOS runtime clock to measure 60 representative
 frames whose camera positions traverse the complete level. Every frame performs
-a gameplay update, background and HUD rendering, visible terrain and entity
-rasterization, and the complete 64 KiB transfer to VGA memory.
+a gameplay update, direct-to-VRAM background and HUD rendering, visible terrain
+and entity rasterization, and a hardware page flip.
 
-It reports two measurements:
+It reports two timing measurements:
 
 - raw throughput, which exposes rendering regressions;
 - the same workload under the game's fixed 30 Hz scheduler, which detects missed
   frame deadlines and pacing regressions.
 
-`make perf-test` fails below 36.0 raw frames/s or 29.5 paced frames/s. The raw gate
-leaves 20% headroom above the 30 Hz gameplay deadline.
+It then uses PIT channel 2 as a 1,193,182 Hz target-side profiler and reports
+separate totals for background/cottage, terrain tiles, sprites, HUD, and VGA
+presentation. This avoids the DOS runtime clock's coarse tick granularity for
+individual renderer stages.
+
+`make perf-test` fails below 50.0 raw frames/s or 29.5 paced frames/s, or if any
+profile stage is absent or zero. The raw gate leaves substantial headroom above
+the 30 Hz gameplay deadline without baking one host's exact result into the test.
 
 ## Measured results
 
@@ -40,19 +46,52 @@ build:
 | Renderer and profile | Raw throughput | 30 Hz paced |
 | --- | ---: | ---: |
 | Original C renderer, 386DX-40 profile | 17.0 fps | not sustainable |
-| Optimized renderer, 386DX-40 profile | 45.4–45.5 fps | 30.3 fps |
-| Optimized renderer, 386DX-33 profile (6,075 cycles) | 39.0 fps | 30.3 fps |
+| Mode 13h optimized framebuffer, 386DX-40 profile | 45.4–45.5 fps | 30.3 fps |
+| Planar Mode X direct renderer, 386DX-40 profile | 64.2–64.3 fps | 30.3 fps |
 
-The optimized renderer is about 2.68 times as fast while preserving reference
-frame CRC `5BD3ECB5`.
+The final renderer is about 3.78 times as fast as the original and 41% faster than
+the previous optimized Mode 13h path while preserving reference frame CRC
+`5BD3ECB5`.
+
+The representative 60-frame profile measured 442,402 background ticks, 456,097
+tile ticks, 107,558 sprite ticks, 44,697 HUD ticks, and 1,069 presentation ticks.
+That averages about 6.18 ms, 6.37 ms, 1.50 ms, 0.62 ms, and 0.015 ms per frame,
+respectively. Game simulation, loop overhead, and profiler reads are outside or
+between those buckets.
 
 ## Optimized paths
 
-- Paragraph-aligned DOS framebuffer with an offset of zero.
-- `rep stosd` screen clears and assembly rectangle spans.
-- Four `movsd` operations per opaque 16-pixel tile row.
-- A compact transparent-sprite loop without per-pixel screen-bound checks.
-- Immediate rejection of fully off-screen objects.
-- `rep movsd` for the 64 KiB framebuffer-to-Mode-13h transfer.
+- Unchained 320×200×256 Mode X with two game pages and a persistent title page.
+- Direct planar VRAM rendering; there is no whole-frame copy from conventional
+  memory.
+- CRTC display-start page flipping plus 0–3 pixel attribute-controller panning.
+- VGA-resident planar tile patterns copied with write-mode-1 latches.
+- Generic opaque-span sprites for clipped edges and 16 alignment/plane-specific
+  RLE span streams per sprite for the common fully visible path.
+- Four cached, panning-aware static HUD variants; only the collected count is
+  drawn dynamically.
+- A cached title screen whose blinking prompt is restored and redrawn as a dirty
+  region; unchanged pause and victory frames are retained.
+- Precomputed tree/cloud origins and tree variants remove division and modulo
+  from the per-frame background loop.
+- Plane masks combine unaligned rectangle edge pixels into one vertical pass.
 - Millisecond-clock frame scheduling instead of counting retraces that may have
   elapsed while a frame was rendering.
+
+Mode X organization and latch-copy behavior follow Michael Abrash's discussion
+of unchained VGA and page flipping in the
+[Graphics Programming Black Book](https://www.phatcode.net/res/224/files/html/ch47/47-02.html).
+
+## Memory use
+
+The current data pack is 13,355 bytes and the DOS executable is about 27 KiB. The
+renderer allocates one 64,000-byte conventional-memory scratch image for CRC test
+readback; normal drawing does not use it as a back buffer. Together with the
+loaded program, assets, game state, and stack, active conventional-memory data is
+well below 150 KiB. Future caches may deliberately use more conventional memory
+when profiling shows a useful gain; 400 KiB is not treated as a hard ceiling.
+
+VGA memory is the tighter fixed resource. The two 16,400-address game pages,
+title page, four HUD variants, prompt backup, and tile patterns occupy 58,016
+addresses in each of four planes, or 232,064 of the VGA's 262,144 bytes. The
+remaining VGA space is intentionally left available for small future caches.

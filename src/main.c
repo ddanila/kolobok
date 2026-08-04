@@ -40,7 +40,8 @@ static int selftest(AssetPack *assets)
     GameState game;
     GameState completion;
     GameInput input;
-    u32 crc, vram_crc;
+    u32 crc, vram_crc, title_off_crc, title_on_crc, title_stable_crc;
+    s32 saved_camera;
     int i;
     if (assets->map_w != 80 || assets->map_h != 11 || assets->berry_count != 8)
         return 0;
@@ -75,6 +76,46 @@ static int selftest(AssetPack *assets)
     if (!completion.won || !(completion.events & KOLO_EVENT_WIN))
         return 0;
     if (!video_init(assets)) return 0;
+    video_render_title(assets, 0);
+    video_present();
+    title_off_crc = video_vram_crc();
+    video_render_title(assets, 24);
+    video_present();
+    title_on_crc = video_vram_crc();
+    video_render_title(assets, 24);
+    video_present();
+    title_stable_crc = video_vram_crc();
+    if (title_off_crc == title_on_crc || title_on_crc != title_stable_crc) {
+        video_shutdown();
+        puts("KOLOBOK SELFTEST FAIL title dirty-region cache");
+        return 0;
+    }
+    saved_camera = game.camera_x;
+    for (i = 0; i < 4; ++i) {
+        game.camera_x = (s32)(64 + i) << KOLO_FP_SHIFT;
+        video_render_game(&game);
+        video_present();
+        if (video_frame_crc() != video_vram_crc()) {
+            video_shutdown();
+            puts("KOLOBOK SELFTEST FAIL Mode X fine scroll/page flip");
+            return 0;
+        }
+    }
+    game.camera_x = saved_camera;
+    video_render_game(&game);
+    video_present();
+    crc = video_frame_crc();
+    vram_crc = video_vram_crc();
+    video_render_pause(&game);
+    video_present();
+    crc = video_frame_crc();
+    video_render_pause(&game);
+    video_present();
+    if (crc != video_frame_crc() || crc != video_vram_crc()) {
+        video_shutdown();
+        puts("KOLOBOK SELFTEST FAIL pause frame cache");
+        return 0;
+    }
     video_render_game(&game);
     video_present();
     crc = video_frame_crc();
@@ -93,6 +134,7 @@ static int benchmark(AssetPack *assets)
 {
     GameState game;
     GameInput input;
+    VideoProfile profile;
     clock_t started, elapsed, paced_started, paced_elapsed, next_frame;
     unsigned long fps10, paced_fps10;
     unsigned frame;
@@ -104,6 +146,7 @@ static int benchmark(AssetPack *assets)
     memset(&input, 0, sizeof(input));
     input.right = 1;
     if (!video_init(assets)) return 0;
+    video_vsync_enable(0);
     video_render_game(&game);
     video_present();
     started = clock();
@@ -117,6 +160,7 @@ static int benchmark(AssetPack *assets)
         video_present();
     }
     elapsed = clock() - started;
+    video_vsync_enable(1);
     paced_started = clock();
     next_frame = paced_started;
     for (frame = 0; frame < frame_count; ++frame) {
@@ -130,6 +174,21 @@ static int benchmark(AssetPack *assets)
         video_present();
     }
     paced_elapsed = clock() - paced_started;
+    video_vsync_enable(0);
+    video_profile_reset();
+    video_profile_enable(1);
+    for (frame = 0; frame < frame_count; ++frame) {
+        int camera = (int)((unsigned long)frame * 37UL % (unsigned long)max_camera);
+        game_step(&game, &input);
+        game.camera_x = (s32)camera << KOLO_FP_SHIFT;
+        game.player.x = (s32)(camera + 153) << KOLO_FP_SHIFT;
+        game.player.animation = (u8)(frame % 3);
+        video_render_game(&game);
+        video_present();
+    }
+    video_profile_enable(0);
+    video_profile_get(&profile);
+    video_vsync_enable(1);
     video_shutdown();
     if (elapsed == 0) elapsed = 1;
     if (paced_elapsed == 0) paced_elapsed = 1;
@@ -140,6 +199,10 @@ static int benchmark(AssetPack *assets)
     printf("KOLOBOK BENCH frames=%u ticks=%lu hz=%lu fps10=%lu paced10=%lu\n",
         frame_count, (unsigned long)elapsed, (unsigned long)CLOCKS_PER_SEC,
         fps10, paced_fps10);
+    printf("KOLOBOK PROFILE frames=%u bg=%lu tiles=%lu sprites=%lu hud=%lu vga=%lu hz=%lu\n",
+        profile.frames, profile.background_ticks, profile.tile_ticks,
+        profile.sprite_ticks, profile.hud_ticks, profile.present_ticks,
+        KOLO_PROFILE_TIMER_HZ);
     return 1;
 }
 

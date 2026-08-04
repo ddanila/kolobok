@@ -106,3 +106,20 @@ void speaker_shutdown(void)
     outp(0x61, inp(0x61) & 0xfc);
     sound_frames = 0;
 }
+
+void platform_profile_timer_init(void)
+{
+    outp(0x61, (inp(0x61) & 0xfd) | 1);
+    outp(0x43, 0xb4);
+    outp(0x42, 0);
+    outp(0x42, 0);
+}
+
+u16 platform_profile_timer_read(void)
+{
+    unsigned count;
+    outp(0x43, 0x80);
+    count = (unsigned)inp(0x42);
+    count |= (unsigned)inp(0x42) << 8;
+    return (u16)count;
+}

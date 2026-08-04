@@ -15,6 +15,8 @@ enum KoloKey {
     KEY_RIGHT = 0x4d
 };
 
+#define KOLO_PROFILE_TIMER_HZ 1193182UL
+
 int keyboard_install(void);
 void keyboard_remove(void);
 int key_down(unsigned scan);
@@ -25,5 +27,8 @@ void speaker_init(int enabled);
 void speaker_play(unsigned frequency, unsigned frames);
 void speaker_tick(void);
 void speaker_shutdown(void);
+
+void platform_profile_timer_init(void);
+u16 platform_profile_timer_read(void);
 
 #endif

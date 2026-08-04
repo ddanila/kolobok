@@ -1,96 +1,58 @@
 #include "video.h"
+#include "platform.h"
 
 #include <conio.h>
 #include <dos.h>
 #include <i86.h>
+#include <string.h>
 
 #define SCREEN_W 320
 #define SCREEN_H 200
+#define LOGICAL_W 328
+#define PITCH 82
 #define HUD_H 24
-#define TRANSPARENT 0
+#define PAGE_SIZE (PITCH * SCREEN_H)
+#define GAME_PAGE_0 0
+#define GAME_PAGE_1 PAGE_SIZE
+#define TITLE_PAGE (PAGE_SIZE * 2)
+#define HUD_CACHE_BYTES (PITCH * HUD_H)
+#define HUD_CACHE_BASE (PAGE_SIZE * 3)
+#define PROMPT_BACKUP_BASE (HUD_CACHE_BASE + HUD_CACHE_BYTES * 4)
+#define PROMPT_X_BYTE 22
+#define PROMPT_Y 124
+#define PROMPT_W_BYTES 35
+#define PROMPT_H 16
+#define TILE_CACHE_BASE (PROMPT_BACKUP_BASE + PROMPT_W_BYTES * PROMPT_H)
+#define TILE_CACHE_BYTES 64
+#define MAX_CAMERA 960
+#define RENDER_NONE 0
+#define RENDER_GAME 1
+#define RENDER_TITLE 2
+#define RENDER_PAUSE 3
+#define RENDER_WIN 4
 
-static unsigned char __far *framebuffer;
-static unsigned framebuffer_segment;
-
-static void clear_386(unsigned segment, unsigned char color);
-#pragma aux clear_386 = \
-    "mov es,dx" \
-    "cld" \
-    "mov ah,al" \
-    "mov bx,ax" \
-    "shl eax,16" \
-    "mov ax,bx" \
-    "xor di,di" \
-    "mov cx,16000" \
-    "rep stosd" \
-    parm [dx] [al] modify [ax bx cx di es];
-
-static void fill_rect_386(unsigned offset, unsigned width, unsigned height,
-                          unsigned char color, unsigned segment);
-#pragma aux fill_rect_386 = \
-    "mov es,dx" \
-    "cld" \
-    "mov dx,320" \
-    "sub dx,si" \
-    "rect_row:" \
-    "mov cx,si" \
-    "rep stosb" \
-    "add di,dx" \
-    "dec bx" \
-    "jnz rect_row" \
-    parm [di] [si] [bx] [al] [dx] modify [ax bx cx dx si di es];
-
-static void blit_opaque_386(const unsigned char *source, unsigned offset,
-                            unsigned segment);
-#pragma aux blit_opaque_386 = \
-    "mov es,ax" \
-    "cld" \
-    "mov cx,16" \
-    "opaque_row:" \
-    "movsd" \
-    "movsd" \
-    "movsd" \
-    "movsd" \
-    "add di,304" \
-    "dec cx" \
-    "jnz opaque_row" \
-    parm [si] [di] [ax] modify [cx si di es];
-
-static void blit_masked_386(const unsigned char *source, unsigned offset,
-                            unsigned segment);
-#pragma aux blit_masked_386 = \
-    "mov es,ax" \
-    "cld" \
-    "mov dx,16" \
-    "masked_row:" \
-    "mov bx,16" \
-    "masked_pixel:" \
-    "lodsb" \
-    "test al,al" \
-    "jz masked_skip" \
-    "mov es:[di],al" \
-    "masked_skip:" \
-    "inc di" \
-    "dec bx" \
-    "jnz masked_pixel" \
-    "add di,304" \
-    "dec dx" \
-    "jnz masked_row" \
-    parm [si] [di] [ax] modify [ax bx dx si di es];
-
-static void present_386(unsigned segment);
-#pragma aux present_386 = \
-    "push ds" \
-    "mov ds,ax" \
-    "mov ax,0a000h" \
-    "mov es,ax" \
-    "cld" \
-    "xor si,si" \
-    "xor di,di" \
-    "mov cx,16000" \
-    "rep movsd" \
-    "pop ds" \
-    parm [ax] modify [ax cx si di es];
+static unsigned char __far *scratch;
+static unsigned scratch_segment;
+static unsigned char __far *vram = (unsigned char __far *)MK_FP(0xa000, 0);
+static unsigned draw_base;
+static unsigned display_base;
+static unsigned pending_base;
+static unsigned char draw_pan;
+static unsigned char display_pan;
+static unsigned char pending_pan;
+static unsigned char next_game_page;
+static unsigned char current_map_mask = 0xff;
+static int flip_pending;
+static int vsync_enabled = 1;
+static int profile_enabled;
+static int render_state;
+static int title_cache_valid;
+static int hud_cache_valid;
+static int title_blink = -1;
+static short tree_origin[MAX_CAMERA + 1];
+static short cloud_origin[MAX_CAMERA + 1];
+static unsigned char tree_tall[MAX_CAMERA + 1];
+static VideoProfile profile;
 
 static const unsigned char font[36][7] = {
     {14,17,17,31,17,17,17},{30,17,17,30,17,17,30},{14,17,16,16,16,17,14},
@@ -108,6 +70,97 @@ static const unsigned char font[36][7] = {
     {14,17,17,15,1,2,12}
 };
 
+static void fill_bytes_386(unsigned offset, unsigned width, unsigned height,
+                           unsigned char color);
+#pragma aux fill_bytes_386 = \
+    "mov dl,al" \
+    "mov ax,0a000h" \
+    "mov es,ax" \
+    "mov al,dl" \
+    "cld" \
+    "mov dx,82" \
+    "sub dx,si" \
+    "mx_fill_row:" \
+    "mov cx,si" \
+    "rep stosb" \
+    "add di,dx" \
+    "dec bx" \
+    "jnz mx_fill_row" \
+    parm [di] [si] [bx] [al] modify [ax bx cx dx si di es];
+
+static void clear_vram_386(unsigned char color);
+#pragma aux clear_vram_386 = \
+    "mov dl,al" \
+    "mov ax,0a000h" \
+    "mov es,ax" \
+    "mov al,dl" \
+    "mov ah,al" \
+    "mov bx,ax" \
+    "shl eax,16" \
+    "mov ax,bx" \
+    "xor di,di" \
+    "mov cx,16384" \
+    "cld" \
+    "rep stosd" \
+    parm [al] modify [ax bx cx dx di es];
+
+static void latch_copy_386(unsigned source, unsigned target, unsigned count);
+#pragma aux latch_copy_386 = \
+    "push ds" \
+    "mov ax,0a000h" \
+    "mov ds,ax" \
+    "mov es,ax" \
+    "cld" \
+    "rep movsb" \
+    "pop ds" \
+    parm [si] [di] [cx] modify [ax cx si di es];
+
+static void blit_tile_plane_386(const unsigned char *source, unsigned target);
+#pragma aux blit_tile_plane_386 = \
+    "mov ax,0a000h" \
+    "mov es,ax" \
+    "mov cx,16" \
+    "cld" \
+    "mx_tile_row:" \
+    "movsd" \
+    "add di,78" \
+    "dec cx" \
+    "jnz mx_tile_row" \
+    parm [si] [di] modify [ax cx si di es];
+
+static void copy_to_vram_386(const unsigned char *source, unsigned target,
+                             unsigned count);
+#pragma aux copy_to_vram_386 = \
+    "mov ax,0a000h" \
+    "mov es,ax" \
+    "cld" \
+    "rep movsb" \
+    parm [si] [di] [cx] modify [ax cx si di es];
+
+static void latch_tile_386(unsigned source, unsigned target);
+#pragma aux latch_tile_386 = \
+    "push ds" \
+    "mov ax,0a000h" \
+    "mov ds,ax" \
+    "mov es,ax" \
+    "mov cx,16" \
+    "cld" \
+    "mx_latch_tile_row:" \
+    "movsb" \
+    "movsb" \
+    "movsb" \
+    "movsb" \
+    "add di,78" \
+    "dec cx" \
+    "jnz mx_latch_tile_row" \
+    "pop ds" \
+    parm [si] [di] modify [ax cx si di es];
+
+static u32 profile_elapsed(u16 started)
+{
+    return (u16)(started - platform_profile_timer_read());
+}
+
 static void set_mode(unsigned mode)
 {
     union REGS regs;
@@ -115,19 +168,94 @@ static void set_mode(unsigned mode)
     int86(0x10, &regs, &regs);
 }
 
+static void set_map_mask(unsigned char mask)
+{
+    if (mask == current_map_mask) return;
+    outpw(0x3c4, ((unsigned)mask << 8) | 2);
+    current_map_mask = mask;
+}
+
+static void set_mode_x(void)
+{
+    set_mode(0x13);
+    outpw(0x3c4, 0x0100);
+    outpw(0x3c4, 0x0604);
+    outp(0x3c2, 0x63);
+    outpw(0x3c4, 0x0300);
+    outpw(0x3d4, 0x0014);
+    outpw(0x3d4, 0xe317);
+    outpw(0x3d4, 0x2913);
+    current_map_mask = 0xff;
+    set_map_mask(0x0f);
+    clear_vram_386(0);
+}
+
+static void set_display_start(unsigned base, unsigned char pan)
+{
+    outpw(0x3d4, 0x0c | (base & 0xff00));
+    outpw(0x3d4, 0x0d | ((base & 0x00ff) << 8));
+    (void)inp(0x3da);
+    outp(0x3c0, 0x13);
+    outp(0x3c0, (unsigned char)(pan * 2));
+    outp(0x3c0, 0x20);
+}
+
+static void wait_vblank(void)
+{
+    while (inp(0x3da) & 8) { }
+    while (!(inp(0x3da) & 8)) { }
+}
+
+static void latch_copy(unsigned source, unsigned target, unsigned count)
+{
+    outpw(0x3ce, 0x4105);
+    set_map_mask(0x0f);
+    latch_copy_386(source, target, count);
+    outpw(0x3ce, 0x4005);
+}
+
+static void begin_latch_writes(void)
+{
+    outpw(0x3ce, 0x4105);
+    set_map_mask(0x0f);
+}
+
+static void end_latch_writes(void)
+{
+    outpw(0x3ce, 0x4005);
+}
+
 static void fill_rect(int x, int y, int w, int h, unsigned char color)
 {
+    unsigned offset;
+    unsigned edge;
+    unsigned groups;
     if (x < 0) { w += x; x = 0; }
     if (y < 0) { h += y; y = 0; }
-    if (x + w > SCREEN_W) w = SCREEN_W - x;
+    if (x + w > LOGICAL_W) w = LOGICAL_W - x;
     if (y + h > SCREEN_H) h = SCREEN_H - y;
     if (w <= 0 || h <= 0) return;
-    if (x == 0 && y == 0 && w == SCREEN_W && h == SCREEN_H) {
-        clear_386(framebuffer_segment, color);
-        return;
+
+    offset = draw_base + (unsigned)y * PITCH + ((unsigned)x >> 2);
+    if (x & 3) {
+        edge = 4U - ((unsigned)x & 3U);
+        if (edge > (unsigned)w) edge = (unsigned)w;
+        set_map_mask((unsigned char)(((1U << edge) - 1U) << (x & 3)));
+        fill_bytes_386(offset, 1, h, color);
+        ++offset;
+        w -= edge;
     }
-    fill_rect_386((unsigned)y * SCREEN_W + x, w, h, color,
-                  framebuffer_segment);
+    groups = (unsigned)w >> 2;
+    if (groups != 0) {
+        set_map_mask(0x0f);
+        fill_bytes_386(offset, groups, h, color);
+        offset += groups;
+    }
+    edge = (unsigned)w & 3U;
+    if (edge != 0) {
+        set_map_mask((unsigned char)((1U << edge) - 1U));
+        fill_bytes_386(offset, 1, h, color);
+    }
 }
 
 static int glyph_index(char c)
@@ -145,7 +273,8 @@ static void draw_char(int x, int y, char c, unsigned char color, int scale)
     for (row = 0; row < 7; ++row)
         for (col = 0; col < 5; ++col)
             if (font[index][row] & (16 >> col))
-                fill_rect(x + col * scale, y + row * scale, scale, scale, color);
+                fill_rect(x + col * scale, y + row * scale,
+                          scale, scale, color);
 }
 
 static void draw_text(int x, int y, const char *text, unsigned char color, int scale)
@@ -169,45 +298,103 @@ static void draw_number(int x, int y, unsigned value, unsigned char color)
     draw_text(x, y, text + pos, color, 1);
 }
 
-static void blit(const unsigned char *source, int x, int y, int masked)
+static void blit_tile_plane(const unsigned char *source, int x, int y,
+                            unsigned plane)
 {
-    int sx, sy, first_x, first_y, last_x, last_y;
-    if (x <= -16 || x >= SCREEN_W || y <= -16 || y >= SCREEN_H) return;
-    if (x >= 0 && x <= SCREEN_W - 16 && y >= 0 && y <= SCREEN_H - 16) {
-        unsigned offset = (unsigned)y * SCREEN_W + x;
-        if (masked) blit_masked_386(source, offset, framebuffer_segment);
-        else blit_opaque_386(source, offset, framebuffer_segment);
+    int sy;
+    int relative = ((int)plane - (x & 3)) & 3;
+    const unsigned char *plane_source = source + relative * 64;
+    if (x >= 0 && x <= LOGICAL_W - 16 && y >= 0 && y <= SCREEN_H - 16) {
+        blit_tile_plane_386(plane_source,
+            draw_base + (unsigned)y * PITCH + ((x + relative) >> 2));
         return;
     }
-    first_x = x < 0 ? -x : 0;
-    first_y = y < 0 ? -y : 0;
-    last_x = x + 16 > SCREEN_W ? SCREEN_W - x : 16;
-    last_y = y + 16 > SCREEN_H ? SCREEN_H - y : 16;
-    for (sy = first_y; sy < last_y; ++sy) {
-        unsigned char __far *target = framebuffer +
-            (unsigned)(y + sy) * SCREEN_W + x + first_x;
-        for (sx = first_x; sx < last_x; ++sx) {
-            unsigned char color = source[sy * 16 + sx];
-            if (!masked || color != TRANSPARENT)
-                target[sx - first_x] = color;
+    for (sy = 0; sy < 16; ++sy) {
+        int pixel;
+        int dy = y + sy;
+        if ((unsigned)dy >= SCREEN_H) continue;
+        for (pixel = 0; pixel < 4; ++pixel) {
+            int dx = x + relative + pixel * 4;
+            if ((unsigned)dx < LOGICAL_W)
+                vram[draw_base + (unsigned)dy * PITCH + (dx >> 2)] =
+                    plane_source[sy * 4 + pixel];
         }
     }
 }
 
-static void draw_background(int camera)
+static void blit_sprite_plane(const AssetPack *assets, unsigned sprite,
+                              int x, int y, unsigned plane)
 {
-    int x, base;
-    fill_rect(0, 0, SCREEN_W, SCREEN_H, 2);
-    fill_rect(0, 112, SCREEN_W, 88, 3);
-    for (x = -40 - ((camera / 5) % 48); x < SCREEN_W + 48; x += 48) {
-        int h = 42 + ((x / 48) & 1) * 12;
-        fill_rect(x + 20, 112 - h, 7, h, 5);
-        for (base = 0; base < 4; ++base)
-            fill_rect(x + 8 + base * 4, 78 - base * 7, 31 - base * 8, 8, 5);
+    const unsigned char *source;
+    int sy;
+    if (sprite >= assets->sprite_count || x <= -16 || x >= LOGICAL_W ||
+        y <= -16 || y >= SCREEN_H) return;
+    if (x >= 0 && x <= LOGICAL_W - 16 && y >= 0 && y <= SCREEN_H - 16) {
+        source = assets->sprite_planar_spans[sprite][(x & 3) * 4 + plane];
+        for (sy = 0; sy < 16; ++sy) {
+            unsigned run, run_count = *source++;
+            for (run = 0; run < run_count; ++run) {
+                unsigned start = *source++;
+                unsigned length = *source++;
+                copy_to_vram_386(source,
+                    draw_base + (unsigned)(y + sy) * PITCH + (x >> 2) + start,
+                    length);
+                source += length;
+            }
+        }
+        return;
     }
-    for (x = 18 - ((camera / 9) % 90); x < SCREEN_W; x += 90) {
-        fill_rect(x, 36, 25, 4, 4);
-        fill_rect(x + 6, 32, 14, 4, 4);
+    source = assets->sprite_spans[sprite];
+    for (sy = 0; sy < 16; ++sy) {
+        unsigned run, run_count = *source++;
+        for (run = 0; run < run_count; ++run) {
+            int start = *source++;
+            int length = *source++;
+            int pixel;
+            for (pixel = 0; pixel < length; ++pixel) {
+                int dx = x + start + pixel;
+                int dy = y + sy;
+                if ((unsigned)dx < LOGICAL_W && (unsigned)dy < SCREEN_H &&
+                    (unsigned)(dx & 3) == plane)
+                    vram[draw_base + (unsigned)dy * PITCH + (dx >> 2)] =
+                        source[pixel];
+            }
+            source += length;
+        }
+    }
+}
+
+static void blit_sprite(const AssetPack *assets, unsigned sprite, int x, int y)
+{
+    unsigned plane;
+    for (plane = 0; plane < 4; ++plane) {
+        set_map_mask((unsigned char)(1 << plane));
+        blit_sprite_plane(assets, sprite, x, y, plane);
+    }
+}
+
+static void draw_background(int camera, int pan, int preserve_hud)
+{
+    int x, base, tall;
+    fill_rect(0, preserve_hud ? HUD_H : 0, LOGICAL_W,
+              SCREEN_H - (preserve_hud ? HUD_H : 0), 2);
+    fill_rect(0, 112, LOGICAL_W, 88, 3);
+    if (camera < 0) camera = 0;
+    if (camera > MAX_CAMERA) camera = MAX_CAMERA;
+    x = tree_origin[camera];
+    tall = tree_tall[camera];
+    while (x < SCREEN_W + 48) {
+        int h = 42 + tall * 12;
+        fill_rect(x + pan + 20, 112 - h, 7, h, 5);
+        for (base = 0; base < 4; ++base)
+            fill_rect(x + pan + 8 + base * 4, 78 - base * 7,
+                      31 - base * 8, 8, 5);
+        if (!(x > -48 && x < 0)) tall ^= 1;
+        x += 48;
+    }
+    for (x = cloud_origin[camera]; x < SCREEN_W; x += 90) {
+        fill_rect(x + pan, 36, 25, 4, 4);
+        fill_rect(x + pan + 6, 32, 14, 4, 4);
     }
 }
 
@@ -228,128 +415,300 @@ static void draw_cottage(int camera)
     fill_rect(x + 8, y - 17, 32, 8, 25);
 }
 
-static void draw_world(const GameState *game)
+static void draw_entity_plane(const GameState *game, int camera, unsigned plane)
 {
     const AssetPack *assets = game->assets;
-    int camera = (int)(game->camera_x >> KOLO_FP_SHIFT);
-    int first = camera / 16;
-    int last = (camera + SCREEN_W) / 16 + 1;
-    int tx, ty;
     unsigned i;
-    draw_background(camera);
-    draw_cottage(camera);
-    if (first < 0) first = 0;
-    if (last > assets->map_w) last = assets->map_w;
-    for (ty = 0; ty < assets->map_h; ++ty) {
-        for (tx = first; tx < last; ++tx) {
-            unsigned tile = assets->map[ty * assets->map_w + tx];
-            if (tile && tile < assets->tile_count)
-                blit(assets->tiles + tile * 256, tx * 16 - camera, HUD_H + ty * 16, 0);
-        }
-    }
     for (i = 0; i < assets->berry_count; ++i)
         if (!game->berry_taken[i])
-            blit(assets->sprites + 3 * 256, assets->berries[i].x - camera,
-                 HUD_H + assets->berries[i].y, 1);
-    blit(assets->sprites + 6 * 256, assets->checkpoint.x - camera,
-         HUD_H + assets->checkpoint.y, 1);
+            blit_sprite_plane(assets, 3, assets->berries[i].x - camera,
+                              HUD_H + assets->berries[i].y, plane);
+    blit_sprite_plane(assets, 6, assets->checkpoint.x - camera,
+                      HUD_H + assets->checkpoint.y, plane);
     for (i = 0; i < assets->enemy_count; ++i)
-        blit(assets->sprites + (4 + game->enemies[i].type) * 256,
-             (int)(game->enemies[i].x >> KOLO_FP_SHIFT) - camera,
-             HUD_H + (int)(game->enemies[i].y >> KOLO_FP_SHIFT), 1);
-    blit(assets->sprites + game->player.animation * 256,
-         (int)(game->player.x >> KOLO_FP_SHIFT) - camera,
-         HUD_H + (int)(game->player.y >> KOLO_FP_SHIFT), 1);
+        blit_sprite_plane(assets, 4 + game->enemies[i].type,
+                          (int)(game->enemies[i].x >> KOLO_FP_SHIFT) - camera,
+                          HUD_H + (int)(game->enemies[i].y >> KOLO_FP_SHIFT), plane);
+    blit_sprite_plane(assets, game->player.animation,
+                      (int)(game->player.x >> KOLO_FP_SHIFT) - camera,
+                      HUD_H + (int)(game->player.y >> KOLO_FP_SHIFT), plane);
+}
+
+static void build_tile_cache(const AssetPack *assets)
+{
+    unsigned tile, plane;
+    for (tile = 0; tile < assets->tile_count; ++tile)
+        for (plane = 0; plane < 4; ++plane) {
+            set_map_mask((unsigned char)(1 << plane));
+            copy_to_vram_386(assets->tiles + tile * 256 + plane * 64,
+                TILE_CACHE_BASE + tile * TILE_CACHE_BYTES, TILE_CACHE_BYTES);
+        }
+}
+
+static void draw_tiles(const AssetPack *assets, int camera, int first, int last)
+{
+    int tx, ty;
+    unsigned plane;
+    begin_latch_writes();
+    for (ty = 0; ty < assets->map_h; ++ty)
+        for (tx = first; tx < last; ++tx) {
+            unsigned tile = assets->map[ty * assets->map_w + tx];
+            int x = tx * 16 - camera;
+            int y = HUD_H + ty * 16;
+            if (tile && tile < assets->tile_count && x >= 0 &&
+                x <= LOGICAL_W - 16 && y >= 0 && y <= SCREEN_H - 16)
+                latch_tile_386(TILE_CACHE_BASE + tile * TILE_CACHE_BYTES,
+                    draw_base + (unsigned)y * PITCH + (x >> 2));
+        }
+    end_latch_writes();
+    for (plane = 0; plane < 4; ++plane) {
+        set_map_mask((unsigned char)(1 << plane));
+        for (ty = 0; ty < assets->map_h; ++ty)
+            for (tx = first; tx < last; ++tx) {
+                unsigned tile = assets->map[ty * assets->map_w + tx];
+                int x = tx * 16 - camera;
+                int y = HUD_H + ty * 16;
+                if (tile && tile < assets->tile_count &&
+                    !(x >= 0 && x <= LOGICAL_W - 16 && y >= 0 &&
+                      y <= SCREEN_H - 16))
+                    blit_tile_plane(assets->tiles + tile * 256, x, y, plane);
+            }
+    }
+}
+
+static void draw_world(const GameState *game, int preserve_hud)
+{
+    const AssetPack *assets = game->assets;
+    int actual_camera = (int)(game->camera_x >> KOLO_FP_SHIFT);
+    int pan = preserve_hud ? (actual_camera & 3) : 0;
+    int camera = actual_camera - pan;
+    int first = camera >> 4;
+    int last = (camera + SCREEN_W + 3) / 16 + 1;
+    unsigned plane;
+    u16 stage;
+    draw_pan = (unsigned char)pan;
+    if (profile_enabled) stage = platform_profile_timer_read();
+    draw_background(actual_camera, pan, preserve_hud);
+    draw_cottage(camera);
+    if (profile_enabled) profile.background_ticks += profile_elapsed(stage);
+    if (first < 0) first = 0;
+    if (last > assets->map_w) last = assets->map_w;
+    if (profile_enabled) stage = platform_profile_timer_read();
+    draw_tiles(assets, camera, first, last);
+    if (profile_enabled) profile.tile_ticks += profile_elapsed(stage);
+    if (profile_enabled) stage = platform_profile_timer_read();
+    for (plane = 0; plane < 4; ++plane) {
+        set_map_mask((unsigned char)(1 << plane));
+        draw_entity_plane(game, camera, plane);
+    }
+    if (profile_enabled) profile.sprite_ticks += profile_elapsed(stage);
+}
+
+static void draw_hud_static(const AssetPack *assets, int pan)
+{
+    fill_rect(0, 0, LOGICAL_W, HUD_H, 1);
+    fill_rect(0, HUD_H - 2, LOGICAL_W, 2, 11);
+    blit_sprite(assets, 3, 8 + pan, 4);
+    draw_text(40 + pan, 8, "OF", 23, 1);
+    draw_number(58 + pan, 8, assets->berry_count, 15);
+    draw_text(104 + pan, 8, "HOME", 11, 1);
+    draw_text(245 + pan, 8, "S SOUND", 23, 1);
+}
+
+static void build_hud_cache(const AssetPack *assets)
+{
+    unsigned saved_base = draw_base;
+    unsigned char saved_pan = draw_pan;
+    int pan;
+    for (pan = 0; pan < 4; ++pan) {
+        draw_base = HUD_CACHE_BASE + pan * HUD_CACHE_BYTES;
+        draw_pan = (unsigned char)pan;
+        draw_hud_static(assets, pan);
+    }
+    draw_base = saved_base;
+    draw_pan = saved_pan;
+    hud_cache_valid = 1;
 }
 
 static void draw_hud(const GameState *game)
 {
-    fill_rect(0, 0, SCREEN_W, HUD_H, 1);
-    fill_rect(0, HUD_H - 2, SCREEN_W, 2, 11);
-    blit(game->assets->sprites + 3 * 256, 8, 4, 1);
-    draw_number(28, 8, game->berries_collected, 15);
-    draw_text(40, 8, "OF", 23, 1);
-    draw_number(58, 8, game->assets->berry_count, 15);
-    draw_text(104, 8, "HOME", 11, 1);
-    draw_text(245, 8, "S SOUND", 23, 1);
+    if (!hud_cache_valid) build_hud_cache(game->assets);
+    latch_copy(HUD_CACHE_BASE + draw_pan * HUD_CACHE_BYTES,
+               draw_base, HUD_CACHE_BYTES);
+    draw_number(28 + draw_pan, 8, game->berries_collected, 15);
+}
+
+static void backup_prompt(void)
+{
+    int row;
+    for (row = 0; row < PROMPT_H; ++row)
+        latch_copy(TITLE_PAGE + (PROMPT_Y + row) * PITCH + PROMPT_X_BYTE,
+                   PROMPT_BACKUP_BASE + row * PROMPT_W_BYTES,
+                   PROMPT_W_BYTES);
+}
+
+static void restore_prompt(void)
+{
+    int row;
+    for (row = 0; row < PROMPT_H; ++row)
+        latch_copy(PROMPT_BACKUP_BASE + row * PROMPT_W_BYTES,
+                   TITLE_PAGE + (PROMPT_Y + row) * PITCH + PROMPT_X_BYTE,
+                   PROMPT_W_BYTES);
 }
 
 int video_init(const AssetPack *assets)
 {
     unsigned i;
-    if (_dos_allocmem(4000, &framebuffer_segment) != 0) return 0;
-    framebuffer = (unsigned char __far *)MK_FP(framebuffer_segment, 0);
-    set_mode(0x13);
+    if (_dos_allocmem(4000, &scratch_segment) != 0) return 0;
+    scratch = (unsigned char __far *)MK_FP(scratch_segment, 0);
+    set_mode_x();
+    for (i = 0; i <= MAX_CAMERA; ++i) {
+        tree_origin[i] = (short)(-40 - ((i / 5) % 48));
+        cloud_origin[i] = (short)(18 - ((i / 9) % 90));
+        tree_tall[i] = (unsigned char)((tree_origin[i] / 48) & 1);
+    }
     outp(0x3c8, 0);
     for (i = 0; i < 768; ++i) outp(0x3c9, assets->palette[i]);
+    build_tile_cache(assets);
+    draw_base = display_base = GAME_PAGE_0;
+    draw_pan = display_pan = 0;
+    set_display_start(display_base, display_pan);
     return 1;
 }
 
 void video_shutdown(void)
 {
     set_mode(0x03);
-    if (framebuffer_segment != 0) _dos_freemem(framebuffer_segment);
-    framebuffer = NULL;
-    framebuffer_segment = 0;
+    if (scratch_segment != 0) _dos_freemem(scratch_segment);
+    scratch = NULL;
+    scratch_segment = 0;
+    title_cache_valid = hud_cache_valid = 0;
+    title_blink = -1;
+    render_state = RENDER_NONE;
+    current_map_mask = 0xff;
+}
+
+void video_vsync_enable(int enabled)
+{
+    vsync_enabled = enabled;
 }
 
 void video_present(void)
 {
-    present_386(framebuffer_segment);
+    u16 stage;
+    if (profile_enabled) stage = platform_profile_timer_read();
+    if (flip_pending) {
+        if (vsync_enabled) wait_vblank();
+        set_display_start(pending_base, pending_pan);
+        display_base = pending_base;
+        display_pan = pending_pan;
+        flip_pending = 0;
+    }
+    if (profile_enabled) profile.present_ticks += profile_elapsed(stage);
 }
 
 void video_render_game(const GameState *game)
 {
-    draw_world(game);
+    u16 stage;
+    draw_base = next_game_page ? GAME_PAGE_1 : GAME_PAGE_0;
+    next_game_page ^= 1;
+    draw_world(game, 1);
+    if (profile_enabled) stage = platform_profile_timer_read();
     draw_hud(game);
+    if (profile_enabled) {
+        profile.hud_ticks += profile_elapsed(stage);
+        ++profile.frames;
+    }
+    pending_base = draw_base;
+    pending_pan = draw_pan;
+    flip_pending = 1;
+    render_state = RENDER_GAME;
 }
 
 void video_render_title(const AssetPack *assets, u32 ticks)
 {
     GameState preview;
-    game_init(&preview, assets);
-    preview.camera_x = 0;
-    draw_world(&preview);
-    fill_rect(32, 26, 256, 92, 1);
-    fill_rect(36, 30, 248, 84, 5);
-    draw_text(70, 42, "KOLOBOK", 14, 3);
-    draw_text(67, 72, "FOREST BERRIES", 15, 1);
-    draw_text(55, 88, "ARROWS OR A D TO ROLL", 23, 1);
-    draw_text(67, 99, "SPACE OR UP TO JUMP", 23, 1);
-    if ((ticks / 24) & 1) draw_text(94, 128, "PRESS ENTER", 31, 1);
+    int blink = (int)((ticks / 24) & 1);
+    draw_base = TITLE_PAGE;
+    draw_pan = 0;
+    if (!title_cache_valid) {
+        game_init(&preview, assets);
+        preview.camera_x = 0;
+        draw_world(&preview, 0);
+        fill_rect(32, 26, 256, 92, 1);
+        fill_rect(36, 30, 248, 84, 5);
+        draw_text(70, 42, "KOLOBOK", 14, 3);
+        draw_text(67, 72, "FOREST BERRIES", 15, 1);
+        draw_text(55, 88, "ARROWS OR A D TO ROLL", 23, 1);
+        draw_text(67, 99, "SPACE OR UP TO JUMP", 23, 1);
+        backup_prompt();
+        title_cache_valid = 1;
+    }
+    if (blink != title_blink) {
+        restore_prompt();
+        if (blink) draw_text(94, 128, "PRESS ENTER", 31, 1);
+        title_blink = blink;
+    }
+    if (render_state != RENDER_TITLE) {
+        pending_base = TITLE_PAGE;
+        pending_pan = 0;
+        flip_pending = 1;
+    }
+    render_state = RENDER_TITLE;
 }
 
 static void overlay_box(unsigned char color)
 {
-    fill_rect(54, 61, 212, 78, 1);
-    fill_rect(58, 65, 204, 70, color);
+    fill_rect(54 + draw_pan, 61, 212, 78, 1);
+    fill_rect(58 + draw_pan, 65, 204, 70, color);
 }
 
 void video_render_pause(const GameState *game)
 {
+    if (render_state == RENDER_PAUSE) return;
     video_render_game(game);
     overlay_box(5);
-    draw_text(124, 76, "PAUSED", 15, 1);
-    draw_text(82, 96, "ENTER TO CONTINUE", 23, 1);
-    draw_text(94, 112, "ESC TO QUIT", 31, 1);
+    draw_text(124 + draw_pan, 76, "PAUSED", 15, 1);
+    draw_text(82 + draw_pan, 96, "ENTER TO CONTINUE", 23, 1);
+    draw_text(94 + draw_pan, 112, "ESC TO QUIT", 31, 1);
+    render_state = RENDER_PAUSE;
 }
 
 void video_render_win(const GameState *game)
 {
+    if (render_state == RENDER_WIN) return;
     video_render_game(game);
     overlay_box(21);
-    draw_text(91, 73, "BERRIES ARE HOME", 14, 1);
-    draw_text(103, 92, "WELL DONE", 15, 2);
-    draw_text(88, 119, "ENTER TO PLAY AGAIN", 23, 1);
+    draw_text(91 + draw_pan, 73, "BERRIES ARE HOME", 14, 1);
+    draw_text(103 + draw_pan, 92, "WELL DONE", 15, 2);
+    draw_text(88 + draw_pan, 119, "ENTER TO PLAY AGAIN", 23, 1);
+    render_state = RENDER_WIN;
 }
 
-static u32 crc_far_buffer(const unsigned char __far *buffer)
+static void reconstruct_page(unsigned base, unsigned char pan)
+{
+    unsigned plane;
+    int y;
+    for (plane = 0; plane < 4; ++plane) {
+        int first_x = ((int)plane - pan) & 3;
+        outpw(0x3ce, ((unsigned)plane << 8) | 4);
+        for (y = 0; y < SCREEN_H; ++y) {
+            int x;
+            for (x = first_x; x < SCREEN_W; x += 4)
+                scratch[(unsigned)y * SCREEN_W + x] =
+                    vram[base + (unsigned)y * PITCH + ((x + pan) >> 2)];
+        }
+    }
+    outpw(0x3ce, 0x0004);
+}
+
+static u32 scratch_crc(void)
 {
     u32 crc = 0xffffffffUL;
     u32 i;
     int bit;
     for (i = 0; i < 64000UL; ++i) {
-        crc ^= buffer[i];
+        crc ^= scratch[i];
         for (bit = 0; bit < 8; ++bit)
             crc = (crc >> 1) ^ (0xedb88320UL & (0UL - (crc & 1UL)));
     }
@@ -358,10 +717,28 @@ static u32 crc_far_buffer(const unsigned char __far *buffer)
 
 u32 video_frame_crc(void)
 {
-    return crc_far_buffer(framebuffer);
+    reconstruct_page(draw_base, draw_pan);
+    return scratch_crc();
 }
 
 u32 video_vram_crc(void)
 {
-    return crc_far_buffer((const unsigned char __far *)MK_FP(0xa000, 0));
+    reconstruct_page(display_base, display_pan);
+    return scratch_crc();
+}
+
+void video_profile_enable(int enabled)
+{
+    if (enabled) platform_profile_timer_init();
+    profile_enabled = enabled;
+}
+
+void video_profile_reset(void)
+{
+    memset(&profile, 0, sizeof(profile));
+}
+
+void video_profile_get(VideoProfile *result)
+{
+    *result = profile;
 }

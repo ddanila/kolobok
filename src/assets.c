@@ -47,6 +47,7 @@ int assets_load(AssetPack *pack, const char *path, char *error, unsigned error_s
     const u8 *end;
     u16 version, tile_w, tile_h;
     u32 expected_crc, required;
+    u16 span_blob_size, planar_span_blob_size;
     unsigned i;
 
     memset(pack, 0, sizeof(*pack));
@@ -87,21 +88,85 @@ int assets_load(AssetPack *pack, const char *path, char *error, unsigned error_s
     pack->enemy_count = read_u16(&cursor);
     tile_w = read_u16(&cursor);
     tile_h = read_u16(&cursor);
-    if (version != 1 || tile_w != 16 || tile_h != 16 ||
+    if (version != 3 || tile_w != 16 || tile_h != 16 ||
         pack->map_w == 0 || pack->map_w > 256 ||
         pack->map_h == 0 || pack->map_h > 256 ||
         pack->tile_count == 0 || pack->tile_count > 64 ||
-        pack->sprite_count == 0 || pack->sprite_count > 64 ||
+        pack->sprite_count == 0 || pack->sprite_count > KOLO_MAX_SPRITES ||
         pack->berry_count > KOLO_MAX_BERRIES || pack->enemy_count > KOLO_MAX_ENEMIES)
         return fail(pack, error, error_size, "unsupported asset metadata");
-    required = 768UL + (u32)pack->tile_count * 256UL +
-        (u32)pack->sprite_count * 256UL + (u32)pack->map_w * pack->map_h +
-        (u32)pack->berry_count * 4UL + (u32)pack->enemy_count * 9UL + 8UL;
-    if ((u32)(end - cursor) != required)
-        return fail(pack, error, error_size, "unexpected asset payload size");
+    required = 768UL + (u32)pack->tile_count * 256UL + 2UL;
+    if ((u32)(end - cursor) < required)
+        return fail(pack, error, error_size, "truncated asset data");
     pack->palette = (u8 *)cursor; cursor += 768;
     pack->tiles = (u8 *)cursor; cursor += (u32)pack->tile_count * 256UL;
-    pack->sprites = (u8 *)cursor; cursor += (u32)pack->sprite_count * 256UL;
+    span_blob_size = read_u16(&cursor);
+    required += (u32)span_blob_size + 2UL;
+    if ((u32)(end - cursor) < (u32)span_blob_size + 2UL)
+        return fail(pack, error, error_size, "truncated sprite span data");
+    {
+        const u8 *generic_end = cursor + span_blob_size;
+        const u8 *scan = generic_end;
+        planar_span_blob_size = (u16)(scan[0] | ((u16)scan[1] << 8));
+    }
+    required += (u32)planar_span_blob_size + (u32)pack->map_w * pack->map_h +
+        (u32)pack->berry_count * 4UL + (u32)pack->enemy_count * 9UL + 8UL;
+    if ((u32)(end - (pack->blob + 26)) != required)
+        return fail(pack, error, error_size, "unexpected asset payload size");
+    {
+        const u8 *span_end = cursor + span_blob_size;
+        for (i = 0; i < pack->sprite_count; ++i) {
+            unsigned row;
+            pack->sprite_spans[i] = (u8 *)cursor;
+            for (row = 0; row < 16; ++row) {
+                unsigned run, run_count;
+                if (cursor >= span_end)
+                    return fail(pack, error, error_size, "truncated sprite spans");
+                run_count = *cursor++;
+                for (run = 0; run < run_count; ++run) {
+                    unsigned x, length;
+                    if ((u32)(span_end - cursor) < 2UL)
+                        return fail(pack, error, error_size, "truncated sprite span");
+                    x = *cursor++; length = *cursor++;
+                    if (length == 0 || x + length > 16 ||
+                        (u32)(span_end - cursor) < length)
+                        return fail(pack, error, error_size, "invalid sprite span");
+                    cursor += length;
+                }
+            }
+        }
+        if (cursor != span_end)
+            return fail(pack, error, error_size, "unexpected sprite span size");
+    }
+    planar_span_blob_size = read_u16(&cursor);
+    {
+        const u8 *span_end = cursor + planar_span_blob_size;
+        for (i = 0; i < pack->sprite_count; ++i) {
+            unsigned variant;
+            for (variant = 0; variant < 16; ++variant) {
+                unsigned row;
+                pack->sprite_planar_spans[i][variant] = (u8 *)cursor;
+                for (row = 0; row < 16; ++row) {
+                    unsigned run, run_count;
+                    if (cursor >= span_end)
+                        return fail(pack, error, error_size, "truncated planar sprite spans");
+                    run_count = *cursor++;
+                    for (run = 0; run < run_count; ++run) {
+                        unsigned start, length;
+                        if ((u32)(span_end - cursor) < 2UL)
+                            return fail(pack, error, error_size, "truncated planar sprite span");
+                        start = *cursor++; length = *cursor++;
+                        if (start > 4 || length == 0 || start + length > 5 ||
+                            (u32)(span_end - cursor) < length)
+                            return fail(pack, error, error_size, "invalid planar sprite span");
+                        cursor += length;
+                    }
+                }
+            }
+        }
+        if (cursor != span_end)
+            return fail(pack, error, error_size, "unexpected planar sprite span size");
+    }
     pack->map = (u8 *)cursor; cursor += (u32)pack->map_w * pack->map_h;
     for (i = 0; i < pack->berry_count; ++i) {
         pack->berries[i].x = read_u16(&cursor);

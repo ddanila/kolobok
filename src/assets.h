@@ -11,6 +11,7 @@ typedef signed long s32;
 #define KOLO_TILE_SIZE 16
 #define KOLO_MAX_BERRIES 8
 #define KOLO_MAX_ENEMIES 8
+#define KOLO_MAX_SPRITES 8
 
 typedef struct KoloPoint {
     u16 x;
@@ -34,7 +35,8 @@ typedef struct AssetPack {
     u16 sprite_count;
     u8 *palette;
     u8 *tiles;
-    u8 *sprites;
+    u8 *sprite_spans[KOLO_MAX_SPRITES];
+    u8 *sprite_planar_spans[KOLO_MAX_SPRITES][16];
     u8 *map;
     u16 berry_count;
     KoloPoint berries[KOLO_MAX_BERRIES];
