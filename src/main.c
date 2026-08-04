@@ -44,7 +44,7 @@ static int load_title(AssetPack*assets,char*error,unsigned error_size)
 
 static int selftest(AssetPack*assets)
 {
-    GameState game;GameInput input;u32 a,b,code_good,code_bad;unsigned i;
+    GameState game;GameInput input;u32 a,b,visible,rendered,menu_a,menu_b,code_good,code_bad;unsigned i;
     if(assets->map_w!=96||assets->map_h!=11||assets->level.required_red!=6||
        !assets_far_memory_active(assets))return 0;
     game_init(&game,assets);memset(&input,0,sizeof(input));input.right=1;
@@ -62,13 +62,17 @@ static int selftest(AssetPack*assets)
     if(music_debug_ticks()!=192||music_debug_events()<40||music_debug_voice_mask()!=0x3f){music_shutdown();return 0;}
     music_shutdown();
     if(!video_init(assets))return 0;video_vsync_enable(0);
-    video_render_game(&game);video_present();a=video_vram_crc();
-    video_render_game(&game);video_present();b=video_vram_crc();
+    video_render_menu(assets,0,0);video_present();menu_a=video_vram_crc();
+    video_render_menu(assets,1,1);menu_b=video_vram_crc();rendered=video_frame_crc();
+    if(menu_b!=menu_a||rendered==menu_a){video_shutdown();puts("KOLOBOK SELFTEST FAIL visible title page modified before present");return 0;}
+    video_present();if(video_vram_crc()!=rendered){video_shutdown();puts("KOLOBOK SELFTEST FAIL hidden title page was not presented");return 0;}
+    visible=video_vram_crc();video_render_game(&game);if(video_vram_crc()!=visible){video_shutdown();puts("KOLOBOK SELFTEST FAIL visible game page modified before present");return 0;}video_present();a=video_vram_crc();
+    visible=a;video_render_game(&game);if(video_vram_crc()!=visible){video_shutdown();puts("KOLOBOK SELFTEST FAIL alternating visible page modified before present");return 0;}video_present();b=video_vram_crc();
     if(a!=b||!video_display_state_valid()){video_shutdown();return 0;}
-    video_render_dialogue(&game,1);video_present();
+    visible=video_vram_crc();video_render_dialogue(&game,1);if(video_vram_crc()!=visible){video_shutdown();puts("KOLOBOK SELFTEST FAIL visible dialogue page modified before present");return 0;}video_present();
     if(video_frame_crc()!=video_vram_crc()){video_shutdown();return 0;}
-    video_render_codeword(assets,"REPKA",0);video_present();code_good=video_vram_crc();
-    video_render_codeword(assets,"WRONG",1);video_present();code_bad=video_vram_crc();
+    visible=video_vram_crc();video_render_codeword(assets,"REPKA",0);if(video_vram_crc()!=visible){video_shutdown();puts("KOLOBOK SELFTEST FAIL visible codeword page modified before present");return 0;}video_present();code_good=video_vram_crc();
+    visible=code_good;video_render_codeword(assets,"WRONG",1);if(video_vram_crc()!=visible){video_shutdown();puts("KOLOBOK SELFTEST FAIL alternating codeword page modified before present");return 0;}video_present();code_bad=video_vram_crc();
     if(code_good==code_bad||video_frame_crc()!=video_vram_crc()){video_shutdown();return 0;}
     video_shutdown();printf("KOLOBOK SELFTEST PASS CRC=%08lX VRAM=%08lX\n",a,b);return 1;
 }

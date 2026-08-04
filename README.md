@@ -55,8 +55,9 @@ make dist
 The first build installs a pinned Linux-hosted Open Watcom toolchain under
 `.tools/`. `make test` runs host gameplay and state-machine tests, campaign
 balance checks, KLV/archive JSON round-trips and CRC rejection, the AdLib mock
-register sink, DOS-native game/editor self-tests, a complete deterministic
-three-level playthrough, and the 7,350-cycle Deep Forest performance gate. The
+register sink, DOS-native game/editor and visible-page safety self-tests, a
+complete deterministic three-level playthrough, and the 7,350-cycle Deep Forest
+performance gate. The
 gate requires at least 50 raw frames/s and 29.5 paced frames/s.
 
 `make screenshot` captures nine deterministic DOS-native states and records

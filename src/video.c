@@ -18,12 +18,7 @@
 #define TITLE_PAGE (PAGE_SIZE * 2)
 #define HUD_CACHE_BYTES (PITCH * HUD_H)
 #define HUD_CACHE_BASE (PAGE_SIZE * 3)
-#define PROMPT_BACKUP_BASE (HUD_CACHE_BASE + HUD_CACHE_BYTES * 4)
-#define PROMPT_X_BYTE 22
-#define PROMPT_Y 124
-#define PROMPT_W_BYTES 35
-#define PROMPT_H 16
-#define TILE_CACHE_BASE (PROMPT_BACKUP_BASE + PROMPT_W_BYTES * PROMPT_H)
+#define TILE_CACHE_BASE (HUD_CACHE_BASE + HUD_CACHE_BYTES * 4)
 #define TILE_CACHE_BYTES 64
 #define MAX_CAMERA 3776
 #define RENDER_NONE 0
@@ -43,7 +38,6 @@ static unsigned pending_base;
 static unsigned char draw_pan;
 static unsigned char display_pan;
 static unsigned char pending_pan;
-static unsigned char next_game_page;
 static unsigned char current_map_mask = 0xff;
 static int flip_pending;
 static int vsync_enabled = 1;
@@ -51,7 +45,6 @@ static int profile_enabled;
 static int render_state;
 static int title_cache_valid;
 static int hud_cache_valid;
-static int title_blink = -1;
 static short tree_origin[MAX_CAMERA + 1];
 static unsigned char tree_tall[MAX_CAMERA + 1];
 static unsigned char capture_row[SCREEN_W * 3];
@@ -608,24 +601,6 @@ static void draw_hud(const GameState *game)
     }
 }
 
-static void backup_prompt(void)
-{
-    int row;
-    for (row = 0; row < PROMPT_H; ++row)
-        latch_copy(TITLE_PAGE + (PROMPT_Y + row) * PITCH + PROMPT_X_BYTE,
-                   PROMPT_BACKUP_BASE + row * PROMPT_W_BYTES,
-                   PROMPT_W_BYTES);
-}
-
-static void restore_prompt(void)
-{
-    int row;
-    for (row = 0; row < PROMPT_H; ++row)
-        latch_copy(PROMPT_BACKUP_BASE + row * PROMPT_W_BYTES,
-                   TITLE_PAGE + (PROMPT_Y + row) * PITCH + PROMPT_X_BYTE,
-                   PROMPT_W_BYTES);
-}
-
 int video_init(const AssetPack *assets)
 {
     unsigned i;
@@ -659,8 +634,10 @@ int video_init(const AssetPack *assets)
 #ifdef KOLO_DEBUG_LOAD
     puts("VIDEO cache");
 #endif
-    draw_base = display_base = GAME_PAGE_0;
+    draw_base = display_base = pending_base = GAME_PAGE_0;
     draw_pan = display_pan = 0;
+    pending_pan = 0;
+    flip_pending = 0;
     set_display_start(display_base, display_pan);
 #ifdef KOLO_DEBUG_LOAD
     puts("VIDEO display");
@@ -675,7 +652,6 @@ void video_shutdown(void)
     scratch = NULL;
     scratch_segment = 0;
     title_cache_valid = hud_cache_valid = 0;
-    title_blink = -1;
     render_state = RENDER_NONE;
     current_map_mask = 0xff;
 }
@@ -699,11 +675,27 @@ void video_present(void)
     if (profile_enabled) profile.present_ticks += profile_elapsed(stage);
 }
 
+/* Every animated frame is built on the game page that is not being scanned.
+ * Choosing from display_base, rather than a free-running toggle, also makes the
+ * first frame after video_init and every UI transition safe. */
+static void begin_hidden_frame(void)
+{
+    draw_base = display_base == GAME_PAGE_0 ? GAME_PAGE_1 : GAME_PAGE_0;
+    draw_pan = 0;
+}
+
+static void queue_hidden_frame(unsigned char pan, int state)
+{
+    pending_base = draw_base;
+    pending_pan = pan;
+    flip_pending = 1;
+    render_state = state;
+}
+
 void video_render_game(const GameState *game)
 {
     u16 stage;
-    draw_base = next_game_page ? GAME_PAGE_1 : GAME_PAGE_0;
-    next_game_page ^= 1;
+    begin_hidden_frame();
     draw_world(game, 1);
     if (profile_enabled) stage = platform_profile_timer_read();
     draw_hud(game);
@@ -711,19 +703,15 @@ void video_render_game(const GameState *game)
         profile.hud_ticks += profile_elapsed(stage);
         ++profile.frames;
     }
-    pending_base = draw_base;
-    pending_pan = draw_pan;
-    flip_pending = 1;
-    render_state = RENDER_GAME;
+    queue_hidden_frame(draw_pan, RENDER_GAME);
 }
 
-void video_render_title(const AssetPack *assets, u32 ticks)
+static void begin_title_frame(const AssetPack *assets)
 {
     GameState preview;
-    int blink = (int)((ticks / 24) & 1);
-    draw_base = TITLE_PAGE;
-    draw_pan = 0;
     if (!title_cache_valid) {
+        draw_base = TITLE_PAGE;
+        draw_pan = 0;
         game_init(&preview, assets);
         preview.camera_x = 0;
         draw_world(&preview, 0);
@@ -733,44 +721,42 @@ void video_render_title(const AssetPack *assets, u32 ticks)
         draw_text(67, 72, "FOREST BERRIES", 15, 1);
         draw_text(55, 88, "ARROWS OR A D TO ROLL", 23, 1);
         draw_text(67, 99, "SPACE OR UP TO JUMP", 23, 1);
-        backup_prompt();
         title_cache_valid = 1;
     }
-    if (blink != title_blink) {
-        restore_prompt();
-        if (blink) draw_text(94, 128, "PRESS ENTER", 31, 1);
-        title_blink = blink;
-    }
-    if (render_state != RENDER_TITLE) {
-        pending_base = TITLE_PAGE;
-        pending_pan = 0;
-        flip_pending = 1;
-    }
-    render_state = RENDER_TITLE;
+    begin_hidden_frame();
+    latch_copy(TITLE_PAGE, draw_base, PAGE_SIZE);
+}
+
+void video_render_title(const AssetPack *assets, u32 ticks)
+{
+    begin_title_frame(assets);
+    if ((ticks / 24) & 1) draw_text(94, 128, "PRESS ENTER", 31, 1);
+    queue_hidden_frame(0, RENDER_TITLE);
 }
 
 void video_render_menu(const AssetPack *assets, u32 ticks, unsigned selection)
 {
     static const char *items[3] = {"NEW GAME", "CODEWORD", "QUIT"};
     unsigned i;
-    video_render_title(assets, ticks);
-    draw_base = TITLE_PAGE;
+    (void)ticks;
+    begin_title_frame(assets);
     fill_rect(76, 119, 172, 49, 5);
     for (i = 0; i < 3; ++i) {
         draw_text(104, 122 + i * 14, items[i], i == selection ? 31 : 23, 1);
         if (i == selection) draw_text(91, 122 + i * 14, "1", 14, 1);
     }
+    queue_hidden_frame(0, RENDER_TITLE);
 }
 
 void video_render_codeword(const AssetPack *assets, const char *word, int invalid)
 {
-    video_render_title(assets, 0);
-    draw_base = TITLE_PAGE;
+    begin_title_frame(assets);
     fill_rect(58, 112, 204, 57, 5);
     draw_text(76, 119, "ENTER CODEWORD", 15, 1);
     fill_rect(79, 135, 162, 14, 1);
     draw_text(91, 139, word, invalid ? 18 : 31, 1);
     draw_text(67, 155, "ENTER OK  ESC BACK", 23, 1);
+    queue_hidden_frame(0, RENDER_TITLE);
 }
 
 static void overlay_box(unsigned char color)
@@ -860,7 +846,7 @@ static void draw_oven(int x,int y,unsigned phase)
 void video_render_intro(const AssetPack *assets, unsigned scene, u32 ticks)
 {
     GameState preview;unsigned phase=(unsigned)(ticks/8);game_init(&preview,assets);preview.camera_x=0;
-    draw_base=next_game_page?GAME_PAGE_1:GAME_PAGE_0;next_game_page^=1;
+    begin_hidden_frame();
     if(scene==3){int fall=(int)(ticks*3/2);draw_world(&preview,0);draw_text(78,34,"OUT INTO THE GARDEN",15,1);draw_cottage(assets,0);blit_sprite(assets,(unsigned)((ticks>>2)&3),145+(int)ticks/3,55+(fall<92?fall:92));}
     else{
         draw_world(&preview,0);fill_rect(22,25,276,127,21);fill_rect(27,30,266,117,26);fill_rect(27,126,266,21,9);
@@ -869,7 +855,7 @@ void video_render_intro(const AssetPack *assets, unsigned scene, u32 ticks)
         else{int roll=65+(int)(ticks*11/10);if(roll>238)roll=238;draw_text(68,36,"KOLOBOK WAKES TURNS AND ROLLS",15,1);fill_rect(55,112,210,8,21);fill_rect(61,58,198,54,1);fill_rect(67,64,186,42,28);draw_grandparent(35,77,1,phase);draw_grandparent(268,77,0,phase+1);blit_sprite(assets,(unsigned)((ticks>>2)&3),roll,95);if((ticks/12)&1)draw_text(139,73,"I AM AWAKE",31,1);}
     }
     draw_text(56, 151, "ENTER NEXT  ESC SKIP", 23, 1);
-    pending_base = draw_base; pending_pan = 0; flip_pending = 1; render_state = RENDER_GAME;
+    queue_hidden_frame(0, RENDER_GAME);
 }
 
 void video_render_ending(const GameState *game, u32 ticks)

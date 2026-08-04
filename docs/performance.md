@@ -62,7 +62,7 @@ between those buckets.
 
 ## Optimized paths
 
-- Unchained 320×200×256 Mode X with two game pages and a persistent title page.
+- Unchained 320×200×256 Mode X with two game pages and a title template page.
 - Direct planar VRAM rendering; there is no whole-frame copy from conventional
   memory.
 - CRTC display-start page flipping plus 0–3 pixel attribute-controller panning.
@@ -75,8 +75,9 @@ between those buckets.
   blitters keep the active bank out of the program's near-data segment.
 - Four cached, panning-aware static HUD variants; HP, lives, red count and blue
   boost time are drawn dynamically.
-- A cached title screen whose blinking prompt is restored and redrawn as a dirty
-  region; unchanged pause and victory frames are retained.
+- A VGA-resident title template copied to the hidden game page before menu or
+  codeword overlays are drawn; all UI updates reach the screen through the same
+  vblank-synchronized page flip as gameplay.
 - Precomputed tree/cloud origins and tree variants remove division and modulo
   from the per-frame background loop.
 - Plane masks combine unaligned rectangle edge pixels into one vertical pass.
@@ -101,6 +102,6 @@ deliberately use more conventional memory
 when profiling shows a useful gain; 400 KiB is not treated as a hard ceiling.
 
 VGA memory is the tighter fixed resource. The two 16,400-address game pages,
-title page, four HUD variants, prompt backup, and eleven tile patterns occupy
-58,336 addresses in each of four planes, or 233,344 of the VGA's 262,144 bytes. The
+title template, four HUD variants, and eleven tile patterns occupy 57,776
+addresses in each of four planes, or 231,104 of the VGA's 262,144 bytes. The
 remaining VGA space is intentionally left available for small future caches.
