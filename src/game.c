@@ -245,4 +245,3 @@ void game_step(GameState *game, const GameInput *input)
         target_camera = fp(game->assets->map_w * KOLO_TILE_SIZE - 320);
     game->camera_x += (target_camera - game->camera_x) / 4;
 }
-

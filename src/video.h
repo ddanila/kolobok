@@ -13,4 +13,3 @@ void video_render_win(const GameState *game);
 u32 video_frame_crc(void);
 
 #endif
-

@@ -49,4 +49,3 @@ void assets_free(AssetPack *pack);
 u32 assets_crc32(const u8 *data, u32 length);
 
 #endif
-

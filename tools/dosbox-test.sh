@@ -12,4 +12,3 @@ if ! grep -q '^KOLOBOK SELFTEST PASS CRC=' "$project_root/build/SELFTEST.LOG"; t
     exit 1
 fi
 cat "$project_root/build/SELFTEST.LOG"
-

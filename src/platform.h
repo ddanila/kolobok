@@ -29,4 +29,3 @@ void speaker_shutdown(void);
 void wait_vblank(void);
 
 #endif
-

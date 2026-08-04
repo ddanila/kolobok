@@ -66,4 +66,3 @@ int game_tile_solid(const GameState *game, int px, int py);
 int game_tile_hazard(const GameState *game, int px, int py);
 
 #endif
-
