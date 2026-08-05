@@ -28,7 +28,7 @@
 #define RENDER_WIN 4
 #define COTTAGE_W 48
 #define COTTAGE_H 44
-#define TILE 16
+#define TILE KOLO_TILE_SIZE
 #define HORIZON_Y 112
 #define CLOUD_TOP 27
 #define TREE_BAND_SPACING 48
