@@ -34,6 +34,18 @@ So the drawing *is* landing on the visible page. The original suggestion that a
 stable title screen would exonerate hypothesis 1 was wrong, because it assumed
 the title region could show the fault.
 
+The pause screen was then checked as a control and is completely stable. Pause
+draws once, stops queueing flips, and holds a single page, so nothing is drawn
+while the CRTC scans it.
+
+Pause differs from the menu in two variables at once — it neither redraws nor
+flips — so on its own it does not separate "drawing on the scanned page" from
+"flipping causes the artifact". The flip-only explanation is excluded
+independently: the menu path rewrites the entire page every frame with identical
+content, so both game pages hold identical bytes, and flipping between identical
+pages cannot produce a visible change. Concurrent drawing is the only remaining
+mechanism.
+
 ## 1. The flip is programmed after the CRTC latch, not before
 
 `video_present` (`src/video.c:664`) waits for retrace and *then* writes the new
@@ -149,13 +161,9 @@ against a DOSBox-X frame capture rather than against reconstructed VRAM.
    was invalid: the title region is redrawn idempotently and cannot show the
    fault. See the observation above. Its useful replacement is the pause-screen
    comparison in step 2.
-2. **Compare the pause screen against the menu.** `video_render_pause`
-   (`src/video.c:768`) returns early when `render_state` is already
-   `RENDER_PAUSE`, so it draws once and then stops queueing flips entirely,
-   whereas the menu redraws and flips every tick. Both are static screens, so if
-   pause is rock stable while the menu blinks, the only remaining difference is
-   whether anything is being drawn at all — which places the fault in drawing
-   reaching the visible page rather than in the flip mechanics themselves.
+2. ~~Compare the pause screen against the menu.~~ Done: pause is stable, the
+   menu blinks. With the flip-only explanation excluded above, the fault is
+   drawing reaching the page being scanned, not the flip mechanics.
 3. **Invert the order in `video_present`:** write the start address first, then
    `wait_vblank`, then the pel pan. If flicker disappears, hypothesis 1 is
    confirmed and hypothesis 2 is resolved by the same change.
