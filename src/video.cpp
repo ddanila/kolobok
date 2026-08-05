@@ -52,6 +52,8 @@ enum Sprite {
     SPRITE_FROZEN
 };
 
+static_assert(SPRITE_FROZEN + 1 == MAX_SPRITES, "tools/assets.py SPRITE_COUNT");
+
 #define ROLL_FRAMES 4
 
 typedef struct ThemeStyle {

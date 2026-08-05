@@ -27,7 +27,14 @@ typedef const u8 *ConstFarPtr;
 #define MAX_ENCOUNTERS 8
 #define MAX_SPRITES 15
 
+static_assert(TILE_SIZE == 16, "tools/assets.py TILE");
+static_assert(MAX_SPRITES == 15, "tools/assets.py SPRITE_COUNT");
+static_assert(LEVEL_HEIGHT == 11, "tools/levels.py HEIGHT");
+
 struct Theme { enum Enum { GARDEN, FOREST, DEEP, COUNT }; };
+
+static_assert(Theme::GARDEN == 0 && Theme::FOREST == 1 && Theme::DEEP == 2,
+              "tools/levels.py THEMES");
 struct PickupType { enum Enum { RED, BLUE, SMALL_PIE, BIG_PIE, COUNT }; };
 struct AnimalType { enum Enum { RABBIT, FOX, WOLF, BEAR, COUNT }; };
 struct TreeType { enum Enum { FIR, BIRCH, OAK, COUNT }; };
@@ -36,7 +43,8 @@ struct Reward { enum Enum { NONE, BLUE, SMALL_PIE, COUNT }; };
 /* Tile indices, collision flags and surface materials are a contract with
  * tools/assets.py, which paints the tile sheet in this order and emits the two
  * per-tile tables, and with tools/levels.py, which writes these indices into
- * the tile map. Reordering either side silently swaps tiles in game. */
+ * the tile map. Reordering either side used to swap tiles in game silently; the
+ * assertions below now fail the build instead. */
 struct Tile {
     enum Enum {
         AIR,
@@ -47,6 +55,11 @@ struct Tile {
         COUNT
     };
 };
+
+static_assert(Tile::COUNT == 11, "tools/assets.py TILE_COUNT");
+static_assert(Tile::GRASS_TOP == 1 && Tile::SPIKES == 4 &&
+              Tile::SAND_TOP == 5 && Tile::ICE_TOP == 8,
+              "tools/assets.py draw_tiles paints the sheet in this order");
 
 struct TileFlag { enum Enum { SOLID = 1, HAZARD = 2 }; };
 
