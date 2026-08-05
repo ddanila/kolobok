@@ -1,5 +1,7 @@
 # Kolobok: Expanded Adventure
 
+[![CI](https://github.com/ddanila/kolobok/actions/workflows/ci.yml/badge.svg)](https://github.com/ddanila/kolobok/actions/workflows/ci.yml)
+
 ![Kolobok in the Garden](docs/screenshot.png)
 
 Kolobok is a 16-bit real-mode DOS platform adventure based on the Slavic

@@ -85,11 +85,11 @@ jobs:
       - name: Deterministic campaign playthrough
         run: bash tools/dosbox-playtest.sh
 
-      # The 386DX-40 gate measures emulated time, but the result still moves
-      # with the DOSBox-X build, and runners ship an older one than the profile
-      # in docs/performance.md was recorded with. Reported, never blocking.
-      - name: 386DX-40 performance profile
-        continue-on-error: true
+      # Runners ship an older DOSBox-X than docs/performance.md was recorded
+      # with and still reproduce its 57.4 fps exactly, so this blocks. A macOS
+      # host reports about 54.5 fps for the same binary; the gate's floor of
+      # 50.0 absorbs that spread.
+      - name: 386DX-40 performance gate
         run: bash tools/dosbox-perf-test.sh
 
       - name: Upload logs on failure

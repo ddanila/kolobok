@@ -55,6 +55,13 @@ The expanded worst-case workload remains 91% above its 30 Hz frame deadline and
 14.8% above the raw regression floor while drawing the larger enemy set, three
 tree types, expanded HUD, and material art.
 
+CI reproduces the 57.4 fps figure exactly on `ubuntu-latest`, even though the
+runner installs an older DOSBox-X than the table was recorded with. The same
+binary measures about 54.5 fps on an Apple Silicon host with a Homebrew
+DOSBox-X, so treat differences of a few frames per second between hosts as
+emulator variance rather than as a rendering change; the per-stage profile
+counters are the reliable comparison.
+
 The representative 60-frame expanded profile measured 454,274 background ticks,
 411,536 tile ticks, 175,859 sprite ticks, 160,722 HUD ticks, and 997 presentation
 ticks. That averages about 6.35 ms, 5.75 ms, 2.46 ms, 2.25 ms, and 0.014 ms per frame,

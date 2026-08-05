@@ -1,5 +1,6 @@
 KOLOBOK: EXPANDED ADVENTURE (MS-DOS)
 ====================================
+Version 0.0.1
 
 Collect the red berries and solve each guardian's three-choice puzzle through
 the Garden, Small Forest, and Deep Forest. Blue berries boost speed for ten
