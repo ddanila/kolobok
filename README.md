@@ -59,11 +59,12 @@ The first build installs a pinned Open Watcom toolchain under `.tools/`,
 selected for the host by `tools/watcom-env.sh`. Linux x86-64 uses the published
 installer; macOS arm64 and x86-64 use the same release's `ow-snapshot.tar.xz`,
 because Open Watcom v2 builds macOS hosts in CI but does not publish a macOS
-installer. Both paths pin the same Open Watcom release. `make test` runs host gameplay and state-machine tests, campaign
-balance checks, KLV/archive JSON round-trips and CRC rejection, the AdLib mock
-register sink, DOS-native game/editor and visible-page safety self-tests, a
-complete deterministic three-level playthrough, and the 7,350-cycle Deep Forest
-performance gate. The
+installer. Both paths pin the same Open Watcom release. `make test` runs host gameplay and state-machine tests, host editor-model
+tests, campaign balance checks, KLV/archive JSON round-trips and CRC rejection,
+a check that every level `tools/levels.py` emits passes the runtime's own
+validator, the AdLib mock register sink, DOS-native game/editor and
+visible-page safety self-tests, a complete deterministic three-level
+playthrough, and the 7,350-cycle Deep Forest performance gate. The
 gate requires at least 50 raw frames/s and 29.5 paced frames/s.
 
 `make screenshot` captures nine deterministic DOS-native states into

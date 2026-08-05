@@ -11,22 +11,17 @@
 #define JUMP_BUFFER_FRAMES 3
 #define COYOTE_FRAMES 3
 #define CAMERA_EASE_DIVISOR 4
-#define WAIT_FRAMES 30
 
-#define RABBIT_HOP_SPEED 220L
 #define RABBIT_HOP_LAUNCH (-600L)
-#define FOX_PATROL_SPEED 220L
 #define FOX_CHASE_SPEED 360L
 #define FOX_SIGHT_X 140
 #define FOX_SIGHT_Y 28
-#define WOLF_PATROL_SPEED 260L
 #define WOLF_CHARGE_SPEED 800L
 #define WOLF_SIGHT_X 176
 #define WOLF_SIGHT_Y 32
 #define WOLF_TELEGRAPH_FRAMES 15
 #define WOLF_CHARGE_FRAMES 24
 #define WOLF_RECOVER_FRAMES 30
-#define BEAR_PATROL_SPEED 160L
 #define BEAR_CLIMB_SPEED 180L
 #define BEAR_TRUNK_REACH 3
 
@@ -42,10 +37,8 @@
 
 typedef struct SurfaceGrip { s32 accel, reverse, max_speed, brake; } SurfaceGrip;
 
-static s32 fp(int value) { return (s32)value << FP_SHIFT; }
 static int px(s32 value) { return (int)(value >> FP_SHIFT); }
 static int iabs(int value) { return value < 0 ? -value : value; }
-static int tiles_to_px(int tiles) { return tiles * TILE_SIZE; }
 
 static u8 tile_at(const GameState *game, int x, int y)
 {
@@ -88,17 +81,6 @@ static void event_add(GameState *game, u16 event)
     game->events |= event;
 }
 
-void game_respawn(GameState *game)
-{
-    PlayerState *p = &game->player;
-    p->x = game->checkpoint_x;
-    p->y = game->checkpoint_y;
-    p->vx = p->vy = 0;
-    p->invulnerable = INVULNERABLE_FRAMES;
-    p->on_ground = p->enemy_bounce = 0;
-    ++game->respawns;
-}
-
 void game_lose_life(GameState *game)
 {
     KOLO_LOG(("death x=%d y=%d lv=%u", px(game->player.x), px(game->player.y),
@@ -113,65 +95,6 @@ void game_lose_life(GameState *game)
     }
     game->player.hp = FULL_HP;
     game_respawn(game);
-}
-
-static s32 animal_patrol_speed(u8 type)
-{
-    if (type == AnimalType::RABBIT) return RABBIT_HOP_SPEED;
-    if (type == AnimalType::FOX) return -FOX_PATROL_SPEED;
-    if (type == AnimalType::WOLF) return -WOLF_PATROL_SPEED;
-    return -BEAR_PATROL_SPEED;
-}
-
-static void spawn_enemies(GameState *game)
-{
-    const LevelData *level = &game->assets->level;
-    unsigned i;
-    for (i = 0; i < level->animal_count; ++i) {
-        const AnimalSpawn *spawn = &level->animals[i];
-        EnemyState *enemy = &game->enemies[i];
-        enemy->id = spawn->id;
-        enemy->type = spawn->type;
-        enemy->flags = spawn->flags;
-        enemy->tree_id = spawn->tree_id;
-        enemy->x = fp(tiles_to_px(spawn->x));
-        enemy->y = fp(tiles_to_px(spawn->y) + 2);
-        enemy->spawn_y = enemy->y;
-        enemy->min_x = fp(tiles_to_px(spawn->min_x));
-        enemy->max_x = fp(tiles_to_px(spawn->max_x));
-        enemy->vx = animal_patrol_speed(spawn->type);
-        if (spawn->type == AnimalType::RABBIT) {
-            enemy->state = AiState::WAIT;
-            enemy->timer = WAIT_FRAMES;
-        }
-    }
-}
-
-/* Zero means "unspecified", which is how a fresh game asks for the defaults. */
-static u8 starting_hp(u8 requested)
-{
-    return requested ? requested : FULL_HP;
-}
-
-static u8 starting_lives(u8 requested)
-{
-    if (!requested) return DEFAULT_LIVES;
-    return requested > MAX_LIVES ? MAX_LIVES : requested;
-}
-
-void game_init(GameState *game, const AssetPack *assets, u8 hp, u8 lives)
-{
-    const LevelData *level = &assets->level;
-    memset(game, 0, sizeof(*game));
-    game->assets = assets;
-    game->player.hp = starting_hp(hp);
-    game->player.lives = starting_lives(lives);
-    game->active_encounter = -1;
-    game->checkpoint_x = fp(tiles_to_px(level->start.x));
-    game->checkpoint_y = fp(tiles_to_px(level->start.y) + 2);
-    spawn_enemies(game);
-    game_respawn(game);
-    game->respawns = 0;
 }
 
 static void approach_zero(s32 *value, s32 amount)

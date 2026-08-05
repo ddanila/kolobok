@@ -27,6 +27,19 @@
 #define DEFAULT_LIVES 3
 #define MAX_LIVES 4
 
+/* Speed each animal patrols at, and how long it pauses between legs. The spawn
+ * step in game_state.cpp seeds an enemy with these and the AI in game.cpp keeps
+ * driving it by them, so they belong to neither on its own. */
+#define WAIT_FRAMES 30
+#define RABBIT_HOP_SPEED 220L
+#define FOX_PATROL_SPEED 220L
+#define WOLF_PATROL_SPEED 260L
+#define BEAR_PATROL_SPEED 160L
+
+/* Positions are 24.8 fixed point; tile coordinates are whole pixels first. */
+inline s32 fp(int value) { return (s32)value << FP_SHIFT; }
+inline int tiles_to_px(int tiles) { return tiles * TILE_SIZE; }
+
 struct Event {
     enum Enum {
         JUMP       = 0x0001,
