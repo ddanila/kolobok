@@ -16,9 +16,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -28,7 +28,7 @@ jobs:
       # Cache only the downloaded archive. Unpacking it again is fast, and the
       # unpacked toolchain is far too large to be worth moving through the cache.
       - name: Cache Open Watcom download
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: |
             .tools/open-watcom-linux-x64
@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload binaries
         if: matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kolobok-dos
           path: |
@@ -57,9 +57,9 @@ jobs:
     name: DOS-native tests (DOSBox-X)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -71,7 +71,7 @@ jobs:
           dosbox-x -version | head -3 || true
 
       - name: Cache Open Watcom download
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .tools/open-watcom-linux-x64
           key: watcom-${{ runner.os }}-${{ hashFiles('tools/bootstrap-watcom.sh', 'tools/watcom-env.sh') }}
@@ -94,7 +94,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dos-test-logs
           path: build/*.LOG
