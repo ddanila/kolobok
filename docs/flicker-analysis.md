@@ -22,12 +22,12 @@ hypothesis 1 below, and it invalidates the discriminating test this document
 originally proposed.
 
 Note first that `video_render_title` is declared in `video.h` but never called;
-`UI_TITLE` renders the menu on every tick (`src/main.c:243`). "Title screen" and
+`UI_TITLE` renders the menu on every tick (`src/main.cpp:243`). "Title screen" and
 "menu screen" are therefore the same frame, and the report distinguishes two
 regions of it rather than two screens.
 
 Each menu frame starts with `latch_copy(TITLE_PAGE, draw_base, PAGE_SIZE)` in
-`begin_title_frame` (`src/video.c:729`), which stamps the cached template over
+`begin_title_frame` (`src/video.cpp:729`), which stamps the cached template over
 the whole page. In the title-artwork region that copy writes *the same pixel
 values that are already there*, so it is idempotent and invisible even if it
 lands on the page currently being scanned. That region is structurally incapable
@@ -64,7 +64,7 @@ wait_vblank();
 set_display_start(pending_base, pending_pan);
 ```
 
-`wait_vblank` (`src/video.c:219`) returns on the *leading* edge of vertical
+`wait_vblank` (`src/video.cpp:219`) returns on the *leading* edge of vertical
 retrace — it spins until bit 3 of port 0x3DA goes high. DOSBox-X latches the
 CRTC display-start address on the same event that raises that bit, so by the
 time the poll observed it the latch had already happened. The write to CRTC
@@ -76,7 +76,7 @@ The consequence was deterministic rather than a race:
 - The flip became visible one full refresh (~14.3 ms at 70 Hz) later than the
   code assumed.
 - `display_base` was updated immediately, so during that late refresh
-  `begin_hidden_frame` (`src/video.c:701`) selected the page the CRTC was
+  `begin_hidden_frame` (`src/video.cpp:701`) selected the page the CRTC was
   *still scanning*. This only bit when the next frame started drawing inside
   the late window; see hypothesis 3 for why that happened on some frames.
 - A frame takes roughly 17 ms to draw (6.35 ms background, 5.83 ms tiles,
@@ -99,7 +99,7 @@ start address at the onset of vertical retrace, so writing it after a retrace
 poll misses the same latch on a real 386. Reordering is therefore the correct
 fix on hardware as well, not a DOSBox-X workaround.
 
-`video_present` (`src/video.c:678`) now arms the start address, waits for the
+`video_present` (`src/video.cpp:678`) now arms the start address, waits for the
 retrace that latches it, and writes pel pan inside that blanking interval.
 
 ## 2. Start address and pel pan took effect on different refreshes
@@ -116,7 +116,7 @@ separate from hypothesis 1 and would read as scrolling jitter or shimmer rather
 than as element flicker.
 
 The flip path no longer calls `set_display_start`. Step 3 split it into
-`set_start_address` and `set_pel_pan`; the combined helper (`src/video.c:213`)
+`set_start_address` and `set_pel_pan`; the combined helper (`src/video.cpp:213`)
 now only programs the initial page in `video_init`.
 
 ## 3. Coarse `clock()` granularity makes pacing bursty
@@ -129,7 +129,7 @@ next frame starts drawing, and the nominally hidden page really is hidden. A
 second mechanism is needed to explain why the draw sometimes begins before the
 late flip completes.
 
-`wait_for_frame` (`src/main.c:17`) supplies it. It paces on `clock()`, and the
+`wait_for_frame` (`src/main.cpp:17`) supplies it. It paces on `clock()`, and the
 Watcom DOS headers define `CLOCKS_PER_SEC` as 1000 while the DOS runtime derives
 the value from the 18.2 Hz BIOS tick. The unit is milliseconds but the real
 resolution is about 55 ms, so the counter advances in 55 ms jumps against a
@@ -149,10 +149,10 @@ underlying tick source has been inferred rather than measured.
 
 ## 4. Why the selftest does not catch any of this
 
-`video_vram_crc` (`src/video.c:1004`) reconstructs the page named by the
+`video_vram_crc` (`src/video.cpp:1004`) reconstructs the page named by the
 `display_base` *variable* — the software's belief about what is on screen, not
 what the emulated CRTC is actually scanning. The visible-page assertions in
-`selftest` (`src/main.c:46`) therefore validate the bookkeeping that 1f82862
+`selftest` (`src/main.cpp:46`) therefore validate the bookkeeping that 1f82862
 already fixed and are blind to a late hardware latch.
 
 A test that could catch it needs to read the CRTC start address back from the
@@ -166,7 +166,7 @@ against a DOSBox-X frame capture rather than against reconstructed VRAM.
   This produces a thin horizontal tear line, not element flicker. Worth ruling
   out by trying `output=opengl` with `vsync=true`.
 - The title and menu paths re-render and flip on every tick even when nothing
-  changed (`src/main.c:243`). Under hypothesis 1 that made even a static menu
+  changed (`src/main.cpp:243`). Under hypothesis 1 that made even a static menu
   shimmer.
 - `machine=svga_s3` handles the Mode X CRTC tweaks correctly and is not
   suspected.

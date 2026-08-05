@@ -1,7 +1,11 @@
 .PHONY: all assets levels toolchain dos dos-debug trace-playtest host-test perf-test playtest test run screenshot dist clean
 
 PYTHON ?= python3
-HOST_CC ?= gcc
+
+# g++ accepts all of C++11 but Open Watcom's wpp accepts only static_assert,
+# decltype and the >> template close, so host-test cannot vouch for a change.
+HOST_CXX ?= g++
+HOST_CXXFLAGS ?= -std=c++11 -Wall -Wextra -Werror
 
 all: dos
 
@@ -32,11 +36,11 @@ dos: toolchain assets
 dos-debug: toolchain assets
 	KOLO_TRACE=1 bash tools/build.sh
 
-build/test_game: tests/test_game.c src/game.c src/game.h src/assets.c src/assets.h src/trace.c src/trace.h build/KOLOBOK.DAT build/GARDEN.KLV
-	$(HOST_CC) -std=c99 -Wall -Wextra -Werror -Isrc tests/test_game.c src/game.c src/assets.c src/trace.c -o $@
+build/test_game: tests/test_game.cpp src/game.cpp src/game.h src/assets.cpp src/assets.h src/trace.cpp src/trace.h build/KOLOBOK.DAT build/GARDEN.KLV
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc tests/test_game.cpp src/game.cpp src/assets.cpp src/trace.cpp -o $@
 
-build/test_music: tests/test_music.c src/music.c src/music.h src/assets.h
-	$(HOST_CC) -std=c99 -Wall -Wextra -Werror -Isrc tests/test_music.c src/music.c -o $@
+build/test_music: tests/test_music.cpp src/music.cpp src/music.h src/assets.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc tests/test_music.cpp src/music.cpp -o $@
 
 host-test: build/test_game build/test_music
 	./build/test_game

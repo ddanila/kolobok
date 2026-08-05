@@ -18,21 +18,21 @@ fi
 mkdir -p "$project_root/build"
 rm -f "$project_root/build/KOLOBOK.EXE" "$project_root/build/KOLOEDIT.EXE" "$project_root/build/WATCOM.LOG"
 pushd "$project_root/build" >/dev/null
-if ! wcl -q -bt=dos -ms -3 -ox -s -k8192 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
+if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k8192 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOBOK.EXE \
-    "$project_root/src/main.c" "$project_root/src/game.c" \
-    "$project_root/src/assets.c" "$project_root/src/platform.c" \
-    "$project_root/src/video.c" "$project_root/src/music.c" \
-    "$project_root/src/trace.c" >WATCOM.LOG 2>&1; then
+    "$project_root/src/main.cpp" "$project_root/src/game.cpp" \
+    "$project_root/src/assets.cpp" "$project_root/src/platform.cpp" \
+    "$project_root/src/video.cpp" "$project_root/src/music.cpp" \
+    "$project_root/src/trace.cpp" >WATCOM.LOG 2>&1; then
     popd >/dev/null
     sed -n '1,200p' "$project_root/build/WATCOM.LOG" >&2
     exit 1
 fi
-if ! wcl -q -bt=dos -ms -3 -ox -s -k16384 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
+if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k16384 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOEDIT.EXE \
-    "$project_root/src/editor.c" "$project_root/src/game.c" \
-    "$project_root/src/assets.c" "$project_root/src/platform.c" \
-    "$project_root/src/video.c" "$project_root/src/trace.c" >WATCOM-EDITOR.LOG 2>&1; then
+    "$project_root/src/editor.cpp" "$project_root/src/game.cpp" \
+    "$project_root/src/assets.cpp" "$project_root/src/platform.cpp" \
+    "$project_root/src/video.cpp" "$project_root/src/trace.cpp" >WATCOM-EDITOR.LOG 2>&1; then
     popd >/dev/null
     sed -n '1,200p' "$project_root/build/WATCOM-EDITOR.LOG" >&2
     exit 1
