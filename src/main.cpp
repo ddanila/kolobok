@@ -150,10 +150,10 @@ static int selftest_video_pages(const AssetPack *assets, const GameState *game,
     u32 visible, rendered, menu_a, menu_b, code_good, code_bad;
     video_vsync_enable(0);
 
-    video_render_menu(assets, 0, 0);
+    video_render_menu(assets, 0);
     video_present();
     menu_a = video_vram_crc();
-    video_render_menu(assets, 1, 1);
+    video_render_menu(assets, 1);
     menu_b = video_vram_crc();
     rendered = video_frame_crc();
     if (menu_b != menu_a || rendered == menu_a) {
@@ -721,7 +721,7 @@ static int run_title(App *app, TitleMenu *title, UiState *ui,
         }
         keyboard_clear_edges();
     }
-    video_render_menu(&app->assets, *ui_ticks, title->selection);
+    video_render_menu(&app->assets, title->selection);
     video_present();
     return 1;
 }

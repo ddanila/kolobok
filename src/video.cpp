@@ -795,18 +795,10 @@ static void begin_title_frame(const AssetPack *assets)
     latch_copy(TITLE_PAGE, draw_base, PAGE_SIZE);
 }
 
-void video_render_title(const AssetPack *assets, u32 ticks)
-{
-    begin_title_frame(assets);
-    if ((ticks / 24) & 1) draw_text(94, 128, "PRESS ENTER", COLOR_LEMON, 1);
-    queue_hidden_frame(0, RENDER_TITLE);
-}
-
-void video_render_menu(const AssetPack *assets, u32 ticks, unsigned selection)
+void video_render_menu(const AssetPack *assets, unsigned selection)
 {
     static const char *items[3] = {"NEW GAME", "CODEWORD", "QUIT"};
     unsigned i;
-    (void)ticks;
     begin_title_frame(assets);
     fill_rect(76, 119, 172, 49, COLOR_PINE);
     for (i = 0; i < 3; ++i) {
