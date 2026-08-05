@@ -248,9 +248,9 @@ static void test_ai_freeze(void)
     game_init(&g, &p);
     g.player.x = g.player.y = 0;
     step(&g, 30);
-    assert(g.enemies[0].state == KOLO_AI_WAIT && g.enemies[0].timer == 0);
+    assert(g.enemies[0].state == AiState::WAIT && g.enemies[0].timer == 0);
     step(&g, 1);
-    assert(g.enemies[0].state == KOLO_AI_PATROL && g.enemies[0].vy == -600);
+    assert(g.enemies[0].state == AiState::PATROL && g.enemies[0].vy == -600);
     g.enemies[0].frozen = KOLO_FREEZE_FRAMES;
     {
         s32 frozen_x = g.enemies[0].x;
@@ -266,10 +266,10 @@ static void test_ai_freeze(void)
     stand_on_animal(&g, FOREST_WOLF);
     g.player.invulnerable = 255;
     step(&g, 1);
-    assert(g.enemies[FOREST_WOLF].state == KOLO_AI_TELEGRAPH);
+    assert(g.enemies[FOREST_WOLF].state == AiState::TELEGRAPH);
     assert(g.enemies[FOREST_WOLF].timer == 15);
     step(&g, 15);
-    assert(g.enemies[FOREST_WOLF].state == KOLO_AI_CHARGE);
+    assert(g.enemies[FOREST_WOLF].state == AiState::CHARGE);
     assert(g.enemies[FOREST_WOLF].vx == 800 || g.enemies[FOREST_WOLF].vx == -800);
     assets_free(&p);
 
@@ -277,9 +277,9 @@ static void test_ai_freeze(void)
     load(&p, "DEEP", DEEP_LEVEL);
     game_init(&g, &p);
     g.player.x = g.player.y = 0;
-    for (i = 0; i < 400 && g.enemies[DEEP_BEAR].state != KOLO_AI_CLIMB; ++i) step(&g, 1);
-    assert(g.enemies[DEEP_BEAR].state == KOLO_AI_CLIMB ||
-           g.enemies[DEEP_BEAR].state == KOLO_AI_TOP_WAIT);
+    for (i = 0; i < 400 && g.enemies[DEEP_BEAR].state != AiState::CLIMB; ++i) step(&g, 1);
+    assert(g.enemies[DEEP_BEAR].state == AiState::CLIMB ||
+           g.enemies[DEEP_BEAR].state == AiState::TOP_WAIT);
     assets_free(&p);
 }
 
@@ -305,7 +305,7 @@ static void test_repeated_stomp_refresh(void)
     g.player.vy = 400;
     g.player.on_ground = 0;
     game_step(&g, &idle);
-    assert((g.events & KOLO_EVENT_BOUNCE) && rabbit->frozen == KOLO_FREEZE_FRAMES);
+    assert((g.events & Event::BOUNCE) && rabbit->frozen == KOLO_FREEZE_FRAMES);
 
     g.player.x = 0;
     step(&g, 10);
@@ -335,20 +335,20 @@ static void test_complete_bear_cycle(void)
     g.player.invulnerable = 255;
     for (i = 0; i < 1400; ++i) {
         step(&g, 1);
-        if (bear->state == KOLO_AI_CLIMB) seen_climb = 1;
-        if (bear->state == KOLO_AI_TOP_WAIT) {
+        if (bear->state == AiState::CLIMB) seen_climb = 1;
+        if (bear->state == AiState::TOP_WAIT) {
             seen_top = 1;
             ++top_frames;
         }
-        if (bear->state == KOLO_AI_DESCEND) seen_descend = 1;
-        if (seen_descend && bear->state == KOLO_AI_WAIT) {
+        if (bear->state == AiState::DESCEND) seen_descend = 1;
+        if (seen_descend && bear->state == AiState::WAIT) {
             seen_wait = 1;
             ++wait_frames;
         }
-        if (seen_wait && bear->state == KOLO_AI_PATROL) break;
+        if (seen_wait && bear->state == AiState::PATROL) break;
     }
     assert(seen_climb && seen_top && seen_descend && seen_wait);
-    assert(bear->state == KOLO_AI_PATROL);
+    assert(bear->state == AiState::PATROL);
     assert(top_frames == 30 && wait_frames == 30);
     assets_free(&p);
 }

@@ -27,22 +27,29 @@
 #define KOLO_DEFAULT_LIVES 3
 #define KOLO_MAX_LIVES 4
 
-#define KOLO_EVENT_JUMP       0x0001
-#define KOLO_EVENT_BERRY      0x0002
-#define KOLO_EVENT_HURT       0x0004
-#define KOLO_EVENT_CHECKPOINT 0x0008
-#define KOLO_EVENT_BOUNCE     0x0010
-#define KOLO_EVENT_WIN        0x0020
-#define KOLO_EVENT_BLUE       0x0040
-#define KOLO_EVENT_PIE        0x0080
-#define KOLO_EVENT_DEATH      0x0100
-#define KOLO_EVENT_DIALOGUE   0x0200
-#define KOLO_EVENT_PACIFY     0x0400
-#define KOLO_EVENT_GAME_OVER  0x0800
+struct Event {
+    enum Enum {
+        JUMP       = 0x0001,
+        BERRY      = 0x0002,
+        HURT       = 0x0004,
+        CHECKPOINT = 0x0008,
+        BOUNCE     = 0x0010,
+        WIN        = 0x0020,
+        BLUE       = 0x0040,
+        PIE        = 0x0080,
+        DEATH      = 0x0100,
+        DIALOGUE   = 0x0200,
+        PACIFY     = 0x0400,
+        GAME_OVER  = 0x0800
+    };
+};
 
-enum EnemyAIState { KOLO_AI_PATROL, KOLO_AI_WAIT, KOLO_AI_TELEGRAPH,
-                    KOLO_AI_CHARGE, KOLO_AI_RECOVER, KOLO_AI_CLIMB,
-                    KOLO_AI_TOP_WAIT, KOLO_AI_DESCEND };
+struct AiState {
+    enum Enum {
+        PATROL, WAIT, TELEGRAPH, CHARGE,
+        RECOVER, CLIMB, TOP_WAIT, DESCEND
+    };
+};
 
 typedef struct GameInput {
     u8 left, right, jump_held, jump_pressed, talk_pressed;

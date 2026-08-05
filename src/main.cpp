@@ -58,13 +58,13 @@ static void wait_for_frame(clock_t *next, unsigned *remainder)
 
 static void play_events(unsigned events)
 {
-    if (events & KOLO_EVENT_WIN) speaker_play(988, 18);
-    else if (events & KOLO_EVENT_PACIFY) speaker_play(880, 12);
-    else if (events & KOLO_EVENT_CHECKPOINT) speaker_play(784, 8);
-    else if (events & (KOLO_EVENT_BERRY | KOLO_EVENT_BLUE | KOLO_EVENT_PIE)) speaker_play(1047, 5);
-    else if (events & KOLO_EVENT_HURT) speaker_play(147, 10);
-    else if (events & KOLO_EVENT_BOUNCE) speaker_play(659, 4);
-    else if (events & KOLO_EVENT_JUMP) speaker_play(440, 3);
+    if (events & Event::WIN) speaker_play(988, 18);
+    else if (events & Event::PACIFY) speaker_play(880, 12);
+    else if (events & Event::CHECKPOINT) speaker_play(784, 8);
+    else if (events & (Event::BERRY | Event::BLUE | Event::PIE)) speaker_play(1047, 5);
+    else if (events & Event::HURT) speaker_play(147, 10);
+    else if (events & Event::BOUNCE) speaker_play(659, 4);
+    else if (events & Event::JUMP) speaker_play(440, 3);
 }
 
 static int load_stage(AssetPack *assets, unsigned stage, char *error, unsigned error_size)

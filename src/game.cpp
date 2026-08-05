@@ -105,10 +105,10 @@ void game_lose_life(GameState *game)
               (unsigned)game->player.lives));
     if (game->player.lives) --game->player.lives;
     game->blue_timer = 0;
-    event_add(game, KOLO_EVENT_DEATH);
+    event_add(game, Event::DEATH);
     if (!game->player.lives) {
         game->game_over = 1;
-        event_add(game, KOLO_EVENT_GAME_OVER);
+        event_add(game, Event::GAME_OVER);
         return;
     }
     game->player.hp = KOLO_FULL_HP;
@@ -141,7 +141,7 @@ static void spawn_enemies(GameState *game)
         enemy->max_x = fp(tiles_to_px(spawn->max_x));
         enemy->vx = animal_patrol_speed(spawn->type);
         if (spawn->type == AnimalType::RABBIT) {
-            enemy->state = KOLO_AI_WAIT;
+            enemy->state = AiState::WAIT;
             enemy->timer = WAIT_FRAMES;
         }
     }
@@ -259,7 +259,7 @@ void game_damage(GameState *game, u8 type, int source_x)
         p->hp = 1;
     } else if (p->hp <= amount) {
         p->hp = 0;
-        event_add(game, KOLO_EVENT_HURT);
+        event_add(game, Event::HURT);
         game_lose_life(game);
         return;
     } else {
@@ -268,7 +268,7 @@ void game_damage(GameState *game, u8 type, int source_x)
     p->invulnerable = KOLO_INVULNERABLE_FRAMES;
     p->vx = px(p->x) < source_x ? -KNOCKBACK_SPEED : KNOCKBACK_SPEED;
     p->vy = KNOCKBACK_LIFT;
-    event_add(game, KOLO_EVENT_HURT);
+    event_add(game, Event::HURT);
 }
 
 static void bound_enemy(EnemyState *e)
@@ -300,12 +300,12 @@ static int tree_x(const GameState *game, u16 id)
 
 static void update_rabbit(EnemyState *e)
 {
-    if (e->state == KOLO_AI_WAIT) {
+    if (e->state == AiState::WAIT) {
         if (e->timer) {
             --e->timer;
             return;
         }
-        e->state = KOLO_AI_PATROL;
+        e->state = AiState::PATROL;
         e->vx = e->vx < 0 ? -RABBIT_HOP_SPEED : RABBIT_HOP_SPEED;
         e->vy = RABBIT_HOP_LAUNCH;
         e->y = e->spawn_y;
@@ -317,7 +317,7 @@ static void update_rabbit(EnemyState *e)
     if (e->y >= e->spawn_y && e->vy > 0) {
         e->y = e->spawn_y;
         e->vy = 0;
-        e->state = KOLO_AI_WAIT;
+        e->state = AiState::WAIT;
         e->timer = WAIT_FRAMES;
     }
     bound_enemy(e);
@@ -336,34 +336,34 @@ static void update_fox(EnemyState *e, int dx, int dy)
 static void update_wolf(EnemyState *e, int dx, int dy)
 {
     switch (e->state) {
-    case KOLO_AI_PATROL:
+    case AiState::PATROL:
         if (iabs(dx) < WOLF_SIGHT_X && iabs(dy) < WOLF_SIGHT_Y) {
-            e->state = KOLO_AI_TELEGRAPH;
+            e->state = AiState::TELEGRAPH;
             e->timer = WOLF_TELEGRAPH_FRAMES;
             e->vx = 0;
         } else {
             patrol(e, WOLF_PATROL_SPEED);
         }
         break;
-    case KOLO_AI_TELEGRAPH:
+    case AiState::TELEGRAPH:
         if (!--e->timer) {
-            e->state = KOLO_AI_CHARGE;
+            e->state = AiState::CHARGE;
             e->timer = WOLF_CHARGE_FRAMES;
             e->vx = dx < 0 ? -WOLF_CHARGE_SPEED : WOLF_CHARGE_SPEED;
         }
         break;
-    case KOLO_AI_CHARGE:
+    case AiState::CHARGE:
         e->x += e->vx;
         bound_enemy(e);
         if (!--e->timer) {
-            e->state = KOLO_AI_RECOVER;
+            e->state = AiState::RECOVER;
             e->timer = WOLF_RECOVER_FRAMES;
             e->vx = 0;
         }
         break;
-    case KOLO_AI_RECOVER:
+    case AiState::RECOVER:
         if (!--e->timer) {
-            e->state = KOLO_AI_PATROL;
+            e->state = AiState::PATROL;
             e->vx = WOLF_PATROL_SPEED;
         }
         break;
@@ -377,36 +377,36 @@ static void update_bear(GameState *game, EnemyState *e,
 {
     int trunk_x = tree_x(game, e->tree_id);
     switch (e->state) {
-    case KOLO_AI_PATROL:
+    case AiState::PATROL:
         patrol(e, BEAR_PATROL_SPEED);
         if (trunk_x >= 0 && iabs(px(e->x) - trunk_x) < BEAR_TRUNK_REACH) {
             e->x = fp(trunk_x);
             e->vx = 0;
-            e->state = KOLO_AI_CLIMB;
+            e->state = AiState::CLIMB;
         }
         break;
-    case KOLO_AI_CLIMB:
+    case AiState::CLIMB:
         e->y -= BEAR_CLIMB_SPEED;
         if (px(e->y) <= tiles_to_px(spawn->climb_min) + 2) {
             e->y = fp(tiles_to_px(spawn->climb_min) + 2);
-            e->state = KOLO_AI_TOP_WAIT;
+            e->state = AiState::TOP_WAIT;
             e->timer = WAIT_FRAMES;
         }
         break;
-    case KOLO_AI_TOP_WAIT:
-        if (!--e->timer) e->state = KOLO_AI_DESCEND;
+    case AiState::TOP_WAIT:
+        if (!--e->timer) e->state = AiState::DESCEND;
         break;
-    case KOLO_AI_DESCEND:
+    case AiState::DESCEND:
         e->y += BEAR_CLIMB_SPEED;
         if (px(e->y) >= tiles_to_px(spawn->climb_max) + 2) {
             e->y = e->spawn_y;
-            e->state = KOLO_AI_WAIT;
+            e->state = AiState::WAIT;
             e->timer = WAIT_FRAMES;
         }
         break;
-    case KOLO_AI_WAIT:
+    case AiState::WAIT:
         if (!--e->timer) {
-            e->state = KOLO_AI_PATROL;
+            e->state = AiState::PATROL;
             e->vx = -BEAR_PATROL_SPEED;
         }
         break;
@@ -454,7 +454,7 @@ static void update_enemies(GameState *game, int old_bottom)
             p->vy = KOLO_ENEMY_BOUNCE_SPEED;
             p->enemy_bounce = 1;
             e->frozen = KOLO_FREEZE_FRAMES;
-            event_add(game, KOLO_EVENT_BOUNCE);
+            event_add(game, Event::BOUNCE);
         } else if (!e->frozen) {
             game_damage(game, e->type, ex);
             if (game->game_over || game->respawns) return;
@@ -467,25 +467,25 @@ int game_apply_pickup(GameState *game, u8 type)
     PlayerState *p = &game->player;
     if (type == PickupType::RED) {
         ++game->red_collected;
-        event_add(game, KOLO_EVENT_BERRY);
+        event_add(game, Event::BERRY);
         return 1;
     }
     if (type == PickupType::BLUE) {
         game->blue_timer = KOLO_BLUE_FRAMES;
-        event_add(game, KOLO_EVENT_BLUE);
+        event_add(game, Event::BLUE);
         return 1;
     }
     if (type == PickupType::SMALL_PIE) {
         if (p->hp == KOLO_FULL_HP && p->lives >= KOLO_DEFAULT_LIVES) return 0;
         p->hp = KOLO_FULL_HP;
         if (p->lives < KOLO_DEFAULT_LIVES) ++p->lives;
-        event_add(game, KOLO_EVENT_PIE);
+        event_add(game, Event::PIE);
         return 1;
     }
     p->hp = KOLO_FULL_HP;
     if (p->lives < KOLO_DEFAULT_LIVES) p->lives = KOLO_DEFAULT_LIVES;
     else if (p->lives < KOLO_MAX_LIVES) ++p->lives;
-    event_add(game, KOLO_EVENT_PIE);
+    event_add(game, Event::PIE);
     return 1;
 }
 
@@ -515,7 +515,7 @@ static void claim_checkpoints(GameState *game)
         if (game->checkpoint_x == fp(cx)) continue;
         game->checkpoint_x = fp(cx);
         game->checkpoint_y = fp(tiles_to_px(level->checkpoints[i].y) + 2);
-        event_add(game, KOLO_EVENT_CHECKPOINT);
+        event_add(game, Event::CHECKPOINT);
     }
 }
 
@@ -527,7 +527,7 @@ static void update_collectibles(GameState *game)
     if (game_exit_ready(game) &&
         iabs(px(game->player.x) - tiles_to_px(level->exit.x)) < KOLO_TILE_SIZE) {
         game->won = 1;
-        event_add(game, KOLO_EVENT_WIN);
+        event_add(game, Event::WIN);
     }
 }
 
@@ -559,7 +559,7 @@ int game_try_talk(GameState *game)
         if (iabs(x - px(e->x)) > TALK_REACH || iabs(y - px(e->y)) > TALK_REACH) continue;
         game->active_dialogue = 1;
         game->active_encounter = (s8)i;
-        event_add(game, KOLO_EVENT_DIALOGUE);
+        event_add(game, Event::DIALOGUE);
         return 1;
     }
     return 0;
@@ -592,7 +592,7 @@ int game_answer_dialogue(GameState *game, unsigned answer)
     e->pacified = 1;
     if (encounter->required) game->guardian_solved = 1;
     grant_reward(game, encounter->reward);
-    event_add(game, KOLO_EVENT_PACIFY);
+    event_add(game, Event::PACIFY);
     return 1;
 }
 
@@ -646,7 +646,7 @@ static void apply_jump_input(GameState *game, const GameInput *input)
     if (p->jump_buffer && (p->on_ground || p->coyote)) {
         p->vy = KOLO_JUMP_SPEED;
         p->enemy_bounce = p->on_ground = p->coyote = p->jump_buffer = 0;
-        event_add(game, KOLO_EVENT_JUMP);
+        event_add(game, Event::JUMP);
     } else if (p->jump_buffer) {
         --p->jump_buffer;
     }
@@ -699,7 +699,7 @@ void game_step(GameState *game, const GameInput *input)
     update_enemies(game, old_bottom);
     if (game->game_over) return;
     if (fell_to_death(game)) {
-        event_add(game, KOLO_EVENT_HURT);
+        event_add(game, Event::HURT);
         game_lose_life(game);
         return;
     }
