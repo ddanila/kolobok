@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build and host tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pillow
+        run: python -m pip install --disable-pip-version-check pillow
+
+      # Cache only the downloaded archive. Unpacking it again is fast, and the
+      # unpacked toolchain is far too large to be worth moving through the cache.
+      - name: Cache Open Watcom download
+        uses: actions/cache@v4
+        with:
+          path: |
+            .tools/open-watcom-linux-x64
+            .tools/ow-snapshot.tar.xz
+          key: watcom-${{ runner.os }}-${{ hashFiles('tools/bootstrap-watcom.sh', 'tools/watcom-env.sh') }}
+
+      - name: Cross-compile the DOS binaries
+        run: make dos
+
+      - name: Host tests
+        run: make host-test
+
+      - name: Upload binaries
+        if: matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kolobok-dos
+          path: |
+            build/KOLOBOK.EXE
+            build/KOLOEDIT.EXE
+            build/KOLOBOK.DAT
+            build/*.KLV
+          if-no-files-found: error
+
+  dos-tests:
+    name: DOS-native tests (DOSBox-X)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Pillow and DOSBox-X
+        run: |
+          python -m pip install --disable-pip-version-check pillow
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends dosbox-x
+          dosbox-x -version | head -3 || true
+
+      - name: Cache Open Watcom download
+        uses: actions/cache@v4
+        with:
+          path: .tools/open-watcom-linux-x64
+          key: watcom-${{ runner.os }}-${{ hashFiles('tools/bootstrap-watcom.sh', 'tools/watcom-env.sh') }}
+
+      - name: Cross-compile the DOS binaries
+        run: make dos
+
+      - name: Game and editor self-tests
+        run: bash tools/dosbox-test.sh
+
+      - name: Deterministic campaign playthrough
+        run: bash tools/dosbox-playtest.sh
+
+      # The 386DX-40 gate measures emulated time, but the result still moves
+      # with the DOSBox-X build, and runners ship an older one than the profile
+      # in docs/performance.md was recorded with. Reported, never blocking.
+      - name: 386DX-40 performance profile
+        continue-on-error: true
+        run: bash tools/dosbox-perf-test.sh
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dos-test-logs
+          path: build/*.LOG
+          if-no-files-found: ignore
