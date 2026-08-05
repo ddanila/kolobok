@@ -7,7 +7,13 @@
 #define KOLO_FP_ONE 256L
 #define KOLO_PLAYER_W 14
 #define KOLO_PLAYER_H 14
-#define KOLO_JUMP_SPEED (-850L)
+/* A full jump must clear a two-tile platform. The player stands at y=130 on the
+ * ground row and has to reach y<=99, because below that the lower body is still
+ * inside the platform row and move_horizontal refuses to carry it over the edge.
+ * -850 peaked at y=105, which made every platform in the campaign unreachable.
+ * -950 barely reaches but lands from only 2.5% of run-up timings; -1025 leaves a
+ * usable 26% window. Raising this further starts to disturb enemy encounters. */
+#define KOLO_JUMP_SPEED (-1025L)
 #define KOLO_ENEMY_BOUNCE_SPEED (-1000L)
 #define KOLO_BLUE_FRAMES 300
 #define KOLO_FREEZE_FRAMES 90

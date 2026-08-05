@@ -16,6 +16,28 @@ chunks into its own paragraph-aligned far-memory segment. Resource pointers and
 the optimized tile/sprite paths retain the source segment, so no near-data copy
 or monolithic archive allocation is required.
 
+## Tile indices
+
+Three places agree on what each tile index means, and nothing checks them
+against each other automatically:
+
+| Index | Meaning | Flags | Material |
+| --- | --- | --- | --- |
+| 0 | air | – | air |
+| 1, 2 | grass top, dirt body | solid | grass |
+| 3 | grass platform | solid | grass |
+| 4 | spikes, used for pit floors | hazard | air |
+| 5, 6, 7 | sand top, body, platform | solid | sand |
+| 8, 9, 10 | ice top, body, platform | solid | ice |
+
+`draw_tiles` in `tools/assets.py` paints the art in index order, the flag and
+material tables at the bottom of `make_bank` assign behaviour by index, and
+`MATERIALS` in `tools/levels.py` maps each surface to its `(top, body, platform)`
+triple while pit floors are hard-coded to 4. Painting art into the wrong slot
+swaps two tiles in game without failing any test, which is how 3 and 4 came to
+be drawn as each other's graphics: platforms rendered as floating spikes and pit
+floors as inviting ledges.
+
 ## KLV4
 
 The 32-byte header contains `KLV4`, version 4, header size, CRC-32 of the entire

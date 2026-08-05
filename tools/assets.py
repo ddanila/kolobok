@@ -54,17 +54,21 @@ def draw_tiles() -> Image.Image:
     d.rectangle((x, 0, x + 15, 15), fill=9)
     for px, py in ((1, 2), (9, 1), (5, 8), (12, 11), (2, 14)):
         d.rectangle((x + px, py, x + px + 2, py + 1), fill=8)
+    # 3 is the grass platform and 4 is the spike hazard. The order is fixed by
+    # MATERIALS in tools/levels.py, which encodes grass as (top, body, platform)
+    # = (1, 2, 3) and fills pit floors with 4, and by the flag and material
+    # tables below. Drawing these in the wrong slots swaps them in game.
     x = 3 * TILE
-    for i in range(4):
-        bx = x + i * 4
-        d.polygon((bx, 15, bx + 2, 5, bx + 4, 15), fill=23)
-        d.line((bx + 2, 7, bx + 2, 14), fill=22)
-    x = 4 * TILE
     d.rectangle((x, 3, x + 15, 8), fill=21)
     d.rectangle((x, 1, x + 15, 3), fill=7)
     d.rectangle((x, 8, x + 15, 10), fill=8)
     for px in (2, 8, 13):
         d.point((x + px, 5), fill=11)
+    x = 4 * TILE
+    for i in range(4):
+        bx = x + i * 4
+        d.polygon((bx, 15, bx + 2, 5, bx + 4, 15), fill=23)
+        d.line((bx + 2, 7, bx + 2, 14), fill=22)
     x = 5 * TILE
     d.rectangle((x, 0, x + 15, 15), fill=5)
     d.ellipse((x + 2, 2, x + 13, 13), fill=6)
