@@ -49,6 +49,62 @@
 #define PLANAR_ROW_WIDTH 5
 #define PATH_MAX_LEN 132
 
+/* Scope guards for the three resources the loaders juggle. Both the KLV reader
+ * and the archive reader leave by half a dozen failure branches, and each one
+ * used to repeat the matching fclose, free or assets_free; releasing on the way
+ * out of scope instead leaves the branch holding nothing but its message. None
+ * of them is copyable, because two owners would release twice. */
+class File {
+public:
+    File(const char *path, const char *mode) { handle = fopen(path, mode); }
+    ~File() { if (handle != NULL) fclose(handle); }
+    bool ok() const { return handle != NULL; }
+    FILE *get() { return handle; }
+    /* For a write the flush can fail, so closing early is a checked step. */
+    bool close()
+    {
+        FILE *closing = handle;
+        handle = NULL;
+        return fclose(closing) == 0;
+    }
+private:
+    FILE *handle;
+    File(const File &);
+    File &operator=(const File &);
+};
+
+class Bytes {
+public:
+    Bytes() : p(NULL) { }
+    ~Bytes() { if (p != NULL) free(p); }
+    bool alloc(u32 size) { p = (u8 *)malloc((unsigned)size); return p != NULL; }
+    u8 *get() { return p; }
+    /* Hands the block to a caller that will own it from here on. */
+    u8 *release()
+    {
+        u8 *owned = p;
+        p = NULL;
+        return owned;
+    }
+private:
+    u8 *p;
+    Bytes(const Bytes &);
+    Bytes &operator=(const Bytes &);
+};
+
+/* An AssetPack is filled in stages, and a stage that fails has to give back
+ * what the earlier ones took. keep() is the one exit that does not. */
+class PackGuard {
+public:
+    PackGuard(AssetPack *p) : pack(p) { }
+    ~PackGuard() { if (pack != NULL) assets_free(pack); }
+    void keep() { pack = NULL; }
+private:
+    AssetPack *pack;
+    PackGuard(const PackGuard &);
+    PackGuard &operator=(const PackGuard &);
+};
+
 static u16 read_u16(const u8 **cursor)
 {
     u16 value = (u16)((*cursor)[0] | ((u16)(*cursor)[1] << 8));
@@ -400,36 +456,20 @@ static void write_encounter(u8 **p, const Encounter *encounter)
     put_u16(p, encounter->retry_frames);
 }
 
-static u8 *read_level_file(const char *path, u32 *size, Error &error)
+static bool read_level_file(const char *path, Bytes &blob, u32 *size, Error &error)
 {
-    FILE *file = fopen(path, "rb");
+    File file(path, "rb");
     long measured;
-    u8 *blob;
-    if (!file) {
-        error.fail("cannot open KLV level");
-        return NULL;
-    }
-    if (fseek(file, 0, SEEK_END) || (measured = ftell(file)) < KLV_HEADER_SIZE ||
-        measured > KLV_MAX_SIZE || fseek(file, 0, SEEK_SET)) {
-        fclose(file);
-        error.fail("cannot measure KLV level");
-        return NULL;
-    }
-    blob = (u8 *)malloc((unsigned)measured);
-    if (!blob) {
-        fclose(file);
-        error.fail("not enough memory for level");
-        return NULL;
-    }
-    if (fread(blob, 1, (unsigned)measured, file) != (unsigned)measured) {
-        fclose(file);
-        free(blob);
-        error.fail("short read from KLV level");
-        return NULL;
-    }
-    fclose(file);
+    if (!file.ok()) return error.fail("cannot open KLV level");
+    if (fseek(file.get(), 0, SEEK_END) ||
+        (measured = ftell(file.get())) < KLV_HEADER_SIZE ||
+        measured > KLV_MAX_SIZE || fseek(file.get(), 0, SEEK_SET))
+        return error.fail("cannot measure KLV level");
+    if (!blob.alloc((u32)measured)) return error.fail("not enough memory for level");
+    if (fread(blob.get(), 1, (unsigned)measured, file.get()) != (unsigned)measured)
+        return error.fail("short read from KLV level");
     *size = (u32)measured;
-    return blob;
+    return true;
 }
 
 static bool read_level_header(LevelData *level, const u8 *blob, u32 size,
@@ -462,34 +502,29 @@ static bool read_level_header(LevelData *level, const u8 *blob, u32 size,
     return true;
 }
 
+/* The tile map stays in a local block until the whole payload has parsed, so a
+ * level that fails half way through hands nothing to the caller to release. */
 bool level_load(LevelData *level, const char *path, Error &error)
 {
-    u8 *blob;
+    Bytes blob, map;
     const u8 *p, *end;
     u32 size, map_bytes;
     unsigned i;
     memset(level, 0, sizeof(*level));
-    blob = read_level_file(path, &size, error);
-    if (!blob) return false;
-    if (!read_level_header(level, blob, size, error)) {
-        free(blob);
+    if (!read_level_file(path, blob, &size, error)) return false;
+    if (!read_level_header(level, blob.get(), size, error)) {
         memset(level, 0, sizeof(*level));
         return false;
     }
-    p = blob + KLV_HEADER_SIZE;
-    end = blob + size;
+    p = blob.get() + KLV_HEADER_SIZE;
+    end = blob.get() + size;
     map_bytes = level_map_bytes(level);
     if ((u32)(end - p) < level_body_bytes(level)) {
-        free(blob);
         memset(level, 0, sizeof(*level));
         return error.fail("truncated KLV payload");
     }
-    level->map = (u8 *)malloc((unsigned)map_bytes);
-    if (!level->map) {
-        free(blob);
-        return error.fail("not enough memory for tile map");
-    }
-    memcpy(level->map, p, (unsigned)map_bytes);
+    if (!map.alloc(map_bytes)) return error.fail("not enough memory for tile map");
+    memcpy(map.get(), p, (unsigned)map_bytes);
     p += map_bytes;
     read_point(&p, &level->start);
     read_point(&p, &level->exit);
@@ -500,11 +535,10 @@ bool level_load(LevelData *level, const char *path, Error &error)
     for (i = 0; i < level->tree_count; ++i) read_tree(&p, &level->trees[i]);
     for (i = 0; i < level->encounter_count; ++i) read_encounter(&p, &level->encounters[i]);
     if (p != end) {
-        free(blob);
-        level_free(level);
+        memset(level, 0, sizeof(*level));
         return error.fail("unexpected KLV payload size");
     }
-    free(blob);
+    level->map = map.release();
     if (!level_validate(level, error)) {
         level_free(level);
         return false;
@@ -512,12 +546,12 @@ bool level_load(LevelData *level, const char *path, Error &error)
     return true;
 }
 
-static u8 *build_level_body(const LevelData *level, u32 body_size)
+static bool build_level_body(const LevelData *level, Bytes &body, u32 body_size)
 {
-    u8 *body = (u8 *)malloc((unsigned)body_size);
-    u8 *p = body;
+    u8 *p;
     unsigned i;
-    if (!body) return NULL;
+    if (!body.alloc(body_size)) return false;
+    p = body.get();
     memcpy(p, level->map, (unsigned)level_map_bytes(level));
     p += level_map_bytes(level);
     put_point(&p, level->start);
@@ -528,7 +562,7 @@ static u8 *build_level_body(const LevelData *level, u32 body_size)
     for (i = 0; i < level->animal_count; ++i) write_animal(&p, &level->animals[i]);
     for (i = 0; i < level->tree_count; ++i) write_tree(&p, &level->trees[i]);
     for (i = 0; i < level->encounter_count; ++i) write_encounter(&p, &level->encounters[i]);
-    return body;
+    return true;
 }
 
 static void write_level_header(FILE *file, const LevelData *level, u32 crc)
@@ -568,33 +602,29 @@ bool level_save(const LevelData *level, const char *path, Error &error)
 {
     char temp[PATH_MAX_LEN], backup[PATH_MAX_LEN];
     LevelData check;
-    FILE *file;
-    u8 *body;
+    Bytes body;
     u32 body_size, crc;
-    int had_original;
+    bool had_original;
     if (!level_validate(level, error)) return false;
     if (strlen(path) + 5 >= sizeof(temp))
         return error.fail("level filename is too long");
     body_size = level_body_bytes(level);
-    body = build_level_body(level, body_size);
-    if (!body) return error.fail("not enough memory to save level");
-    crc = assets_crc32(body, body_size);
+    if (!build_level_body(level, body, body_size))
+        return error.fail("not enough memory to save level");
+    crc = assets_crc32(body.get(), body_size);
 
     with_extension(temp, path, ".TMP");
     with_extension(backup, path, ".BAK");
-    file = fopen(temp, "wb");
-    if (!file) {
-        free(body);
-        return error.fail("cannot create temporary level");
+    {
+        File file(temp, "wb");
+        if (!file.ok()) return error.fail("cannot create temporary level");
+        write_level_header(file.get(), level, crc);
+        if (fwrite(body.get(), 1, (unsigned)body_size, file.get()) !=
+            (unsigned)body_size || !file.close()) {
+            remove(temp);
+            return error.fail("failed writing temporary level");
+        }
     }
-    write_level_header(file, level, crc);
-    if (fwrite(body, 1, (unsigned)body_size, file) != (unsigned)body_size ||
-        fclose(file)) {
-        free(body);
-        remove(temp);
-        return error.fail("failed writing temporary level");
-    }
-    free(body);
 
     if (!level_load(&check, temp, error)) {
         remove(temp);
@@ -783,35 +813,20 @@ static bool find_bank(FILE *file, const char *bank_name, u32 *offset, u32 *size,
 bool assets_load_bank(AssetPack *pack, const char *archive_path, const char *bank_name,
                      const char *level_path, Error &error)
 {
-    FILE *file;
     u32 offset, size;
     memset(pack, 0, sizeof(*pack));
+    PackGuard guard(pack);
     if (level_path && !level_load(&pack->level, level_path, error)) return false;
-    file = fopen(archive_path, "rb");
-    if (!file) {
-        assets_free(pack);
-        return error.fail("cannot open KOLOBOK.DAT");
+    {
+        File file(archive_path, "rb");
+        if (!file.ok()) return error.fail("cannot open KOLOBOK.DAT");
+        if (!find_bank(file.get(), bank_name, &offset, &size, error)) return false;
+        if (fseek(file.get(), (long)offset, SEEK_SET))
+            return error.fail("cannot seek resource bank");
+        if (!read_bank_blob(pack, file.get(), size, error)) return false;
     }
-    if (!find_bank(file, bank_name, &offset, &size, error)) {
-        fclose(file);
-        assets_free(pack);
-        return false;
-    }
-    if (fseek(file, (long)offset, SEEK_SET)) {
-        fclose(file);
-        assets_free(pack);
-        return error.fail("cannot seek resource bank");
-    }
-    if (!read_bank_blob(pack, file, size, error)) {
-        fclose(file);
-        assets_free(pack);
-        return false;
-    }
-    fclose(file);
-    if (!parse_bank(pack, error)) {
-        assets_free(pack);
-        return false;
-    }
+    if (!parse_bank(pack, error)) return false;
+    guard.keep();
     return true;
 }
 
