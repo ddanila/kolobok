@@ -80,7 +80,7 @@ u8 game_surface_at(const GameState *game, int x, int y)
 {
     u8 tile = tile_at(game, x, y);
     return tile < game->assets->tile_count ? game->assets->tile_material[tile]
-                                           : Surface::AIR;
+                                           : (u8)Surface::AIR;
 }
 
 static void event_add(GameState *game, u16 event)
@@ -244,7 +244,7 @@ void game_damage(GameState *game, u8 type, int source_x)
     PlayerState *p = &game->player;
     u8 amount;
     if (p->invulnerable || game->game_over) return;
-    amount = damage[type <= AnimalType::BEAR ? type : AnimalType::BEAR];
+    amount = damage[type <= AnimalType::BEAR ? type : (u8)AnimalType::BEAR];
     if (type <= AnimalType::FOX && p->hp <= amount) {
         p->hp = 1;
     } else if (p->hp <= amount) {
@@ -606,7 +606,7 @@ static SurfaceGrip player_grip(const GameState *game)
     const PlayerState *p = &game->player;
     u8 surface = p->on_ground
         ? game_surface_at(game, px(p->x) + PLAYER_W / 2, px(p->y) + PLAYER_H + 1)
-        : Surface::AIR;
+        : (u8)Surface::AIR;
     SurfaceGrip grip = grip_for(surface);
     if (game->blue_timer) {
         grip.accel = grip.accel * 5 / 4;
