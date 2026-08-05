@@ -426,13 +426,13 @@ static void test_sequential_carry(void)
     g.player.hp = 63;
     g.player.lives = 2;
     g.blue_timer = 200;
-    game_init_carry(&g, &forest, g.player.hp, g.player.lives);
+    game_init(&g, &forest, g.player.hp, g.player.lives);
     assert(g.player.hp == 63 && g.player.lives == 2);
     assert(g.blue_timer == 0 && g.red_collected == 0);
 
     g.player.hp = 41;
     g.player.lives = MAX_LIVES;
-    game_init_carry(&g, &deep, g.player.hp, g.player.lives);
+    game_init(&g, &deep, g.player.hp, g.player.lives);
     assert(g.player.hp == 41 && g.player.lives == MAX_LIVES);
     assert(g.blue_timer == 0);
 

@@ -159,7 +159,7 @@ static u8 starting_lives(u8 requested)
     return requested > MAX_LIVES ? MAX_LIVES : requested;
 }
 
-static void initialize(GameState *game, const AssetPack *assets, u8 hp, u8 lives)
+void game_init(GameState *game, const AssetPack *assets, u8 hp, u8 lives)
 {
     const LevelData *level = &assets->level;
     memset(game, 0, sizeof(*game));
@@ -172,16 +172,6 @@ static void initialize(GameState *game, const AssetPack *assets, u8 hp, u8 lives
     spawn_enemies(game);
     game_respawn(game);
     game->respawns = 0;
-}
-
-void game_init(GameState *game, const AssetPack *assets)
-{
-    initialize(game, assets, FULL_HP, DEFAULT_LIVES);
-}
-
-void game_init_carry(GameState *game, const AssetPack *assets, u8 hp, u8 lives)
-{
-    initialize(game, assets, hp, lives);
 }
 
 static void approach_zero(s32 *value, s32 amount)

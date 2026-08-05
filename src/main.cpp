@@ -10,7 +10,6 @@
 #include <time.h>
 
 #define ARCHIVE_PATH "KOLOBOK.DAT"
-#define STAGE_COUNT 3
 #define FRAME_RATE 30
 #define ERROR_SIZE 96
 #define CODEWORD_MAX 8
@@ -19,21 +18,23 @@
  * schedule is rebased instead of sprinting to catch up on missed frames. */
 #define PACING_RESYNC_TICKS (CLOCKS_PER_SEC / 5L)
 
-enum Stage { STAGE_GARDEN, STAGE_FOREST, STAGE_DEEP };
+struct Stage { enum Enum { GARDEN, FOREST, DEEP, COUNT }; };
 
-typedef enum Mode {
-    MODE_PLAY, MODE_SELFTEST, MODE_PLAYTEST, MODE_BENCHMARK, MODE_CAPTURE
-} Mode;
-
-enum ExitCode {
-    EXIT_OK = 0, EXIT_ASSETS = 2, EXIT_SELFTEST = 3, EXIT_VIDEO = 4,
-    EXIT_KEYBOARD = 5, EXIT_BENCHMARK = 6, EXIT_CAPTURE = 7,
-    EXIT_RUNTIME = 8, EXIT_PLAYTEST = 9
+struct Mode {
+    enum Enum { PLAY, SELFTEST, PLAYTEST, BENCHMARK, CAPTURE };
 };
 
-static const char *bank_names[STAGE_COUNT] = {"GARDEN", "FOREST", "DEEP"};
-static const char *level_names[STAGE_COUNT] = {"GARDEN.KLV", "SFOREST.KLV", "DFOREST.KLV"};
-static const unsigned stage_music[STAGE_COUNT] = {MUSIC_GARDEN, MUSIC_FOREST, MUSIC_DEEP};
+struct ExitCode {
+    enum Enum {
+        OK = 0, ASSETS = 2, SELFTEST = 3, VIDEO = 4,
+        KEYBOARD = 5, BENCHMARK = 6, CAPTURE = 7,
+        RUNTIME = 8, PLAYTEST = 9
+    };
+};
+
+static const char *bank_names[Stage::COUNT] = {"GARDEN", "FOREST", "DEEP"};
+static const char *level_names[Stage::COUNT] = {"GARDEN.KLV", "SFOREST.KLV", "DFOREST.KLV"};
+static const unsigned stage_music[Stage::COUNT] = {Track::GARDEN, Track::FOREST, Track::DEEP};
 
 static int sound_on = 1;
 
@@ -77,7 +78,7 @@ static int load_stage(AssetPack *assets, unsigned stage, char *error, unsigned e
 static int load_title(AssetPack *assets, char *error, unsigned error_size)
 {
     return assets_load_bank(assets, ARCHIVE_PATH, "INTRO",
-                            level_names[STAGE_GARDEN], error, error_size);
+                            level_names[Stage::GARDEN], error, error_size);
 }
 
 static int selftest_metadata(const AssetPack *assets)
@@ -107,9 +108,9 @@ static int selftest_gameplay(const AssetPack *assets, GameState *game)
 
 static int selftest_codewords(void)
 {
-    return campaign_codeword_stage("repka") == STAGE_GARDEN &&
-           campaign_codeword_stage("TEREMOK") == STAGE_FOREST &&
-           campaign_codeword_stage("MOROZKO") == STAGE_DEEP &&
+    return campaign_codeword_stage("repka") == Stage::GARDEN &&
+           campaign_codeword_stage("TEREMOK") == Stage::FOREST &&
+           campaign_codeword_stage("MOROZKO") == Stage::DEEP &&
            campaign_codeword_stage("NOPE") < 0;
 }
 
@@ -125,7 +126,7 @@ static int selftest_track(unsigned track)
 static int selftest_music(void)
 {
     if (!music_init(1) || !music_is_detected()) return 0;
-    if (!selftest_track(MUSIC_GARDEN) || !selftest_track(MUSIC_DEEP)) {
+    if (!selftest_track(Track::GARDEN) || !selftest_track(Track::DEEP)) {
         music_shutdown();
         return 0;
     }
@@ -519,7 +520,7 @@ static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
     GameInput input;
     u8 abandoned[MAX_PICKUPS];
     unsigned frame, budget, stall = 0, last_target = BOT_NO_TARGET;
-    game_init_carry(&game, assets, *hp, *lives);
+    game_init(&game, assets, *hp, *lives);
     memset(abandoned, 0, sizeof(abandoned));
     budget = (unsigned)assets->level.width * BOT_FRAMES_PER_COLUMN;
     trace_reset();
@@ -567,7 +568,7 @@ static int campaign_playtest(AssetPack *assets, char *error, unsigned error_size
     unsigned stage;
     int passed = 1;
     assets_free(assets);
-    for (stage = 0; stage < STAGE_COUNT && passed; ++stage) {
+    for (stage = 0; stage < Stage::COUNT && passed; ++stage) {
         if (!load_stage(assets, stage, error, error_size)) return 0;
         passed = playtest_stage(assets, stage, &hp, &lives);
         assets_free(assets);
@@ -627,7 +628,7 @@ static int enter_stage(App *app, unsigned stage, u8 hp, u8 lives)
     app->stage = stage;
     if (!load_stage(&app->assets, stage, app->error, sizeof(app->error))) return 0;
     if (!video_init(&app->assets)) return 0;
-    game_init_carry(&app->game, &app->assets, hp, lives);
+    game_init(&app->game, &app->assets, hp, lives);
     return 1;
 }
 
@@ -635,17 +636,17 @@ static int enter_title(App *app)
 {
     video_shutdown();
     assets_free(&app->assets);
-    app->stage = STAGE_GARDEN;
+    app->stage = Stage::GARDEN;
     if (!load_title(&app->assets, app->error, sizeof(app->error))) return 0;
     if (!video_init(&app->assets)) return 0;
     game_init(&app->game, &app->assets);
-    music_play(MUSIC_TITLE);
+    music_play(Track::TITLE);
     return 1;
 }
 
 /* -selftest takes precedence over -playtest over -benchmark over -capture, so a
  * command line naming several modes behaves the same way it always has. */
-static Mode parse_arguments(int argc, char **argv, int *music_requested,
+static Mode::Enum parse_arguments(int argc, char **argv, int *music_requested,
                             const char **capture_kind)
 {
     int selftest_flag = 0, playtest_flag = 0, benchmark_flag = 0, capture_flag = 0;
@@ -661,29 +662,29 @@ static Mode parse_arguments(int argc, char **argv, int *music_requested,
             if (i + 1 < argc && argv[i + 1][0] != '-') *capture_kind = argv[++i];
         }
     }
-    if (selftest_flag) return MODE_SELFTEST;
-    if (playtest_flag) return MODE_PLAYTEST;
-    if (benchmark_flag) return MODE_BENCHMARK;
-    if (capture_flag) return MODE_CAPTURE;
-    return MODE_PLAY;
+    if (selftest_flag) return Mode::SELFTEST;
+    if (playtest_flag) return Mode::PLAYTEST;
+    if (benchmark_flag) return Mode::BENCHMARK;
+    if (capture_flag) return Mode::CAPTURE;
+    return Mode::PLAY;
 }
 
 /* Capture scenes and the benchmark each need the bank whose art they show. */
-static unsigned stage_for_scene(Mode mode, const char *kind)
+static unsigned stage_for_scene(Mode::Enum mode, const char *kind)
 {
-    if (mode == MODE_BENCHMARK) return STAGE_DEEP;
-    if (mode != MODE_CAPTURE) return STAGE_GARDEN;
-    if (scene_is(kind, "forest")) return STAGE_FOREST;
+    if (mode == Mode::BENCHMARK) return Stage::DEEP;
+    if (mode != Mode::CAPTURE) return Stage::GARDEN;
+    if (scene_is(kind, "forest")) return Stage::FOREST;
     if (scene_is(kind, "deep") || scene_is(kind, "home") ||
-        scene_is(kind, "credits") || scene_is(kind, "frozen")) return STAGE_DEEP;
-    return STAGE_GARDEN;
+        scene_is(kind, "credits") || scene_is(kind, "frozen")) return Stage::DEEP;
+    return Stage::GARDEN;
 }
 
-static int load_for_mode(App *app, Mode mode, const char *capture_kind)
+static int load_for_mode(App *app, Mode::Enum mode, const char *capture_kind)
 {
-    int wants_title = mode == MODE_PLAY || mode == MODE_SELFTEST ||
-                      mode == MODE_PLAYTEST ||
-                      (mode == MODE_CAPTURE && scene_is(capture_kind, "intro"));
+    int wants_title = mode == Mode::PLAY || mode == Mode::SELFTEST ||
+                      mode == Mode::PLAYTEST ||
+                      (mode == Mode::CAPTURE && scene_is(capture_kind, "intro"));
     if (wants_title) return load_title(&app->assets, app->error, sizeof(app->error));
     return load_stage(&app->assets, stage_for_scene(mode, capture_kind),
                       app->error, sizeof(app->error));
@@ -711,12 +712,12 @@ static int run_title(App *app, TitleMenu *title, UiState *ui,
             title->codeword[0] = 0;
             title->invalid = 0;
         } else {
-            app->stage = STAGE_GARDEN;
+            app->stage = Stage::GARDEN;
             game_init(&app->game, &app->assets);
             *ui = UI_INTRO;
             *intro_scene = 0;
             *ui_ticks = 0;
-            music_play(MUSIC_GARDEN);
+            music_play(Track::GARDEN);
         }
         keyboard_clear_edges();
     }
@@ -731,7 +732,7 @@ int main(int argc, char **argv)
     TitleMenu title;
     GameInput input;
     UiState ui = UI_TITLE;
-    Mode mode;
+    Mode::Enum mode;
     const char *capture_kind = 0;
     unsigned dialogue_choice = 0, intro_scene = 0, remainder = 0;
     u32 ui_ticks = 0;
@@ -742,46 +743,46 @@ int main(int argc, char **argv)
     mode = parse_arguments(argc, argv, &music_requested, &capture_kind);
     memset(&app, 0, sizeof(app));
     memset(&title, 0, sizeof(title));
-    app.stage = STAGE_GARDEN;
+    app.stage = Stage::GARDEN;
     if (!load_for_mode(&app, mode, capture_kind)) {
         fprintf(stderr, "KOLOBOK: %s\n", app.error);
-        return EXIT_ASSETS;
+        return ExitCode::ASSETS;
     }
-    if (mode == MODE_SELFTEST) {
+    if (mode == Mode::SELFTEST) {
         result = selftest(&app.assets);
         assets_free(&app.assets);
-        return result ? EXIT_OK : EXIT_SELFTEST;
+        return result ? ExitCode::OK : ExitCode::SELFTEST;
     }
-    if (mode == MODE_PLAYTEST) {
+    if (mode == Mode::PLAYTEST) {
         result = campaign_playtest(&app.assets, app.error, sizeof(app.error));
         if (app.assets.blob) assets_free(&app.assets);
-        return result ? EXIT_OK : EXIT_PLAYTEST;
+        return result ? ExitCode::OK : ExitCode::PLAYTEST;
     }
-    if (mode == MODE_BENCHMARK) {
+    if (mode == Mode::BENCHMARK) {
         result = benchmark(&app.assets);
         assets_free(&app.assets);
-        return result ? EXIT_OK : EXIT_BENCHMARK;
+        return result ? ExitCode::OK : ExitCode::BENCHMARK;
     }
-    if (mode == MODE_CAPTURE) {
+    if (mode == Mode::CAPTURE) {
         result = capture_frame(&app.assets, capture_kind);
         assets_free(&app.assets);
-        return result ? EXIT_OK : EXIT_CAPTURE;
+        return result ? ExitCode::OK : ExitCode::CAPTURE;
     }
 
     if (!video_init(&app.assets)) {
         assets_free(&app.assets);
         fprintf(stderr, "KOLOBOK: cannot initialize Mode X\n");
-        return EXIT_VIDEO;
+        return ExitCode::VIDEO;
     }
     if (!keyboard_install()) {
         video_shutdown();
         assets_free(&app.assets);
         fprintf(stderr, "KOLOBOK: cannot install keyboard handler\n");
-        return EXIT_KEYBOARD;
+        return ExitCode::KEYBOARD;
     }
     speaker_init(sound_on);
     music_init(music_requested);
-    music_play(MUSIC_TITLE);
+    music_play(Track::TITLE);
     game_init(&app.game, &app.assets);
     next = clock();
 
@@ -835,7 +836,7 @@ int main(int argc, char **argv)
                 keyboard_clear_edges();
             }
             if (intro_scene >= 4) {
-                if (!enter_stage(&app, STAGE_GARDEN, FULL_HP, DEFAULT_LIVES)) break;
+                if (!enter_stage(&app, Stage::GARDEN, FULL_HP, DEFAULT_LIVES)) break;
                 ui = UI_PLAY;
             } else {
                 video_render_intro(&app.assets, intro_scene, ui_ticks);
@@ -905,7 +906,7 @@ int main(int argc, char **argv)
         game_step(&app.game, &input);
         play_events(app.game.events);
         if (app.game.won) {
-            if (app.stage < STAGE_DEEP) {
+            if (app.stage < Stage::DEEP) {
                 u8 hp = app.game.player.hp, lives = app.game.player.lives;
                 if (!enter_stage(&app, app.stage + 1, hp, lives)) break;
                 music_play(stage_music[app.stage]);
@@ -913,7 +914,7 @@ int main(int argc, char **argv)
                 app.game.blue_timer = 0;
                 ui = UI_ENDING;
                 ui_ticks = 0;
-                music_play(MUSIC_HOME);
+                music_play(Track::HOME);
             }
         }
         video_render_game(&app.game);
@@ -925,7 +926,7 @@ int main(int argc, char **argv)
     keyboard_remove();
     video_shutdown();
     assets_free(&app.assets);
-    if (!running) return EXIT_OK;
+    if (!running) return ExitCode::OK;
     fprintf(stderr, "KOLOBOK: %s\n", app.error);
-    return EXIT_RUNTIME;
+    return ExitCode::RUNTIME;
 }

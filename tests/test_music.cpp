@@ -65,7 +65,7 @@ static u32 trace_track(MockOPL *mock, unsigned track)
 static void test_every_track_is_distinct(MockOPL *mock)
 {
     static const unsigned tracks[TRACK_COUNT] = {
-        MUSIC_GARDEN, MUSIC_FOREST, MUSIC_DEEP, MUSIC_HOME
+        Track::GARDEN, Track::FOREST, Track::DEEP, Track::HOME
     };
     u32 hashes[TRACK_COUNT];
     unsigned i, j;

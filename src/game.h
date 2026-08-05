@@ -85,8 +85,8 @@ typedef struct GameState {
     u16 events;
 } GameState;
 
-void game_init(GameState *game, const AssetPack *assets);
-void game_init_carry(GameState *game, const AssetPack *assets, u8 hp, u8 lives);
+void game_init(GameState *game, const AssetPack *assets,
+               u8 hp = FULL_HP, u8 lives = DEFAULT_LIVES);
 void game_step(GameState *game, const GameInput *input);
 void game_respawn(GameState *game);
 void game_lose_life(GameState *game);

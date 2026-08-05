@@ -198,7 +198,7 @@ int music_init(int requested)
     if (!detected) return 0;
     write_reg(OPL_TEST, 0x20);
     write_reg(OPL_PERCUSSION, 0);
-    music_play(MUSIC_TITLE);
+    music_play(Track::TITLE);
     return 1;
 }
 
@@ -220,9 +220,9 @@ int music_is_detected(void) { return detected != 0; }
 
 static u8 score_for_track(unsigned track)
 {
-    if (track == MUSIC_FOREST) return 1;
-    if (track == MUSIC_DEEP) return 2;
-    if (track == MUSIC_HOME) return 3;
+    if (track == Track::FOREST) return 1;
+    if (track == Track::DEEP) return 2;
+    if (track == Track::HOME) return 3;
     return 0;
 }
 

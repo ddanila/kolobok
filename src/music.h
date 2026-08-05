@@ -5,7 +5,7 @@
 
 typedef void (*MusicRegisterSink)(u8 reg, u8 value, void *context);
 
-enum MusicTrack { MUSIC_TITLE, MUSIC_GARDEN, MUSIC_FOREST, MUSIC_DEEP, MUSIC_HOME };
+struct Track { enum Enum { TITLE, GARDEN, FOREST, DEEP, HOME }; };
 
 int music_init(int enabled);
 void music_shutdown(void);
