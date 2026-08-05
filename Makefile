@@ -12,21 +12,24 @@ HOST_CXXFLAGS ?= -std=c++11 -Wall -Wextra -Werror
 
 all: dos
 
-assets: build/KOLOBOK.DAT levels
+assets: build/KOLOBOK.DAT build/generated/grandparents.inc levels
 
-build/KOLOBOK.DAT: tools/assets.py
+build/KOLOBOK.DAT: tools/assets.py assets/art/manifest.json assets/art/tiles.png assets/art/sprites.png
 	$(PYTHON) tools/assets.py --out $@
+
+build/generated/grandparents.inc: tools/characters.py tools/assets.py assets/art/manifest.json assets/art/grandparents.png
+	$(PYTHON) tools/characters.py --out $@
 
 levels: build/GARDEN.KLV build/SFOREST.KLV build/DFOREST.KLV
 
-build/GARDEN.KLV: tools/levels.py assets/garden.json
-	$(PYTHON) tools/levels.py import assets/garden.json $@
+build/GARDEN.KLV: tools/levels.py assets/levels/garden.json
+	$(PYTHON) tools/levels.py import assets/levels/garden.json $@
 
-build/SFOREST.KLV: tools/levels.py assets/sforest.json
-	$(PYTHON) tools/levels.py import assets/sforest.json $@
+build/SFOREST.KLV: tools/levels.py assets/levels/sforest.json
+	$(PYTHON) tools/levels.py import assets/levels/sforest.json $@
 
-build/DFOREST.KLV: tools/levels.py assets/dforest.json
-	$(PYTHON) tools/levels.py import assets/dforest.json $@
+build/DFOREST.KLV: tools/levels.py assets/levels/dforest.json
+	$(PYTHON) tools/levels.py import assets/levels/dforest.json $@
 
 toolchain:
 	bash tools/bootstrap-watcom.sh
@@ -53,11 +56,12 @@ build/test_editor: tests/test_editor.cpp src/editcore.cpp src/editcore.h src/ass
 build/klvcheck: tests/klvcheck.cpp src/assets.cpp src/assets.h
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc tests/klvcheck.cpp src/assets.cpp -o $@
 
-host-test: build/test_game build/test_music build/test_editor build/klvcheck
+host-test: build/test_game build/test_music build/test_editor build/klvcheck build/generated/grandparents.inc
 	./build/test_game
 	./build/test_music
 	./build/test_editor
 	$(PYTHON) tools/assets.py --check
+	$(PYTHON) tools/characters.py --check
 	$(PYTHON) tests/test_levels.py
 	$(PYTHON) tests/test_balance.py
 

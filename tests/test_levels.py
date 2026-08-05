@@ -29,12 +29,12 @@ def check_compiler_agrees_with_runtime() -> None:
     # Derived from the sources rather than globbing build/, which also collects
     # scratch levels the DOS editor self-test leaves behind when it aborts.
     built = [ROOT / "build" / f"{source.stem.upper()}.KLV"
-             for source in sorted((ROOT / "assets").glob("*.json"))]
+             for source in sorted((ROOT / "assets" / "levels").glob("*.json"))]
     assert built and all(path.exists() for path in built), "no compiled levels to check"
     done = klvcheck(*built)
     assert done.returncode == 0, f"compiler emitted a level the runtime rejects:\n{done.stdout}"
 
-    source = json.loads((ROOT / "assets" / "dforest.json").read_text())
+    source = json.loads((ROOT / "assets" / "levels" / "dforest.json").read_text())
     bear = next(a for a in source["animals"] if a["type"] == "bear")
     bear["climb"] = [400, 400]
     with tempfile.TemporaryDirectory() as work:
@@ -48,7 +48,7 @@ def check_compiler_agrees_with_runtime() -> None:
 def main() -> None:
     expected = {"garden": (96, 6), "sforest": (128, 8), "dforest": (160, 10)}
     for name, (width, red) in expected.items():
-        source = json.loads((ROOT / "assets" / f"{name}.json").read_text())
+        source = json.loads((ROOT / "assets" / "levels" / f"{name}.json").read_text())
         blob = levels.encode(source)
         assert levels.encode_map_json(levels.decode(blob)) == blob
         decoded = levels.decode(blob)

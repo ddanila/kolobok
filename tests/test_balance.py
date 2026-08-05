@@ -16,7 +16,7 @@ EXPECTED = {
 
 
 def check_level(name: str) -> None:
-    level = json.loads((ROOT / "assets" / f"{name}.json").read_text())
+    level = json.loads((ROOT / "assets" / "levels" / f"{name}.json").read_text())
     width, reds, animals = EXPECTED[name]
     assert level["width"] == width and level["height"] == 11
     assert level["required_red_berries"] == reds

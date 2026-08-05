@@ -73,6 +73,12 @@ refreshes `docs/screenshot.png`. `make dist` creates a redistributable directory
 containing `KOLOBOK.EXE`, `KOLOEDIT.EXE`, `KOLOBOK.DAT`, all three KLV files,
 `README.TXT`, and `LICENSE`.
 
+Every pushed commit and pull request also runs a clean Linux-hosted Open Watcom
+build in GitHub Actions. After source validation, the workflow attaches the
+ready-to-run DOS bundle to the workflow run as a downloadable artifact. It does
+not create or modify a GitHub Release. `make dist` creates the same bundle
+locally after the full suite passes.
+
 ## Level editor
 
 Run `KOLOEDIT.EXE LEVEL.KLV`. If no filename is supplied, it prompts for an
@@ -104,15 +110,17 @@ far sources directly instead of copying the bank into near data.
 
 `GARDEN.KLV`, `SFOREST.KLV`, and `DFOREST.KLV` are little-endian version-4 level
 files with CRC-32 protection, fixed 11-row maps, material tiles, markers,
-pickups, animal patrol/climb data, trees, and encounters. Reviewable sources are
-under `assets/`. The PNGs in `assets/generated/` are build products of
-`tools/assets.py`, committed so art changes are reviewable; they are rewritten
-only when their pixels change, and `make test` fails if they drift out of sync
-with the drawing code. Convert DOS editor output back to canonical JSON with:
+pickups, animal patrol/climb data, trees, and encounters. Designer-owned level
+JSON is under `assets/levels`; indexed tiles, sprites, the Grandpa/Grandma
+animation sheet, shared palette and stable slot metadata are under `assets/art`.
+The build rejects any source PNG whose palette differs from the manifest.
+See [the asset workflow](assets/README.md) for sheet layouts and validation.
+
+Convert DOS editor output back to canonical JSON with:
 
 ```sh
-python3 tools/levels.py export LEVEL.KLV level.json
-python3 tools/levels.py import level.json LEVEL.KLV
+python3 tools/levels.py export LEVEL.KLV assets/levels/level.json
+python3 tools/levels.py import assets/levels/level.json LEVEL.KLV
 ```
 
 See [formats.md](docs/formats.md), [music.md](docs/music.md), and

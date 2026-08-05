@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "grandparents.inc"
 #define PITCH 82
 #define PAGE_SIZE (PITCH * SCREEN_H)
 #define GAME_PAGE_0 0
@@ -892,28 +893,17 @@ void video_render_game_over(const GameState *game)
     render_state = RENDER_WIN;
 }
 
-/* The intro and ending cast are drawn from rectangles rather than sprites: they
- * appear on three screens only, and the sprite sheet has no room for them. */
+/* The intro and ending cast compile from the indexed designer sheet into these
+ * inexpensive Mode X rectangle runs. */
 static void draw_grandparent(int x, int y, int grandmother, unsigned phase)
 {
-    unsigned char clothes = grandmother ? COLOR_PINK : COLOR_BLUE;
-    unsigned char hair = grandmother ? COLOR_GREY_LIGHT : COLOR_GREY;
-    fill_rect(x + 5, y, 10, 9, COLOR_SKIN);
-    fill_rect(x + 4, y - 2, 12, 4, hair);
-    fill_rect(x + 7, y + 3, 2, 2, COLOR_NIGHT);
-    fill_rect(x + 12, y + 3, 2, 2, COLOR_NIGHT);
-    fill_rect(x + 3, y + 9, 14, 20, clothes);
-    fill_rect(x + 5, y + 29, 4, 9, COLOR_BARK);
-    fill_rect(x + 12, y + 29, 4, 9, COLOR_BARK);
-    if (phase & 1) {
-        fill_rect(x - 3, y + 11, 7, 4, COLOR_SKIN);
-        fill_rect(x + 17, y + 18, 8, 4, COLOR_SKIN);
-    } else {
-        fill_rect(x - 1, y + 18, 6, 4, COLOR_SKIN);
-        fill_rect(x + 17, y + 11, 7, 4, COLOR_SKIN);
+    unsigned frame = (grandmother ? 0 : 2) + (phase & 1), i;
+    for (i = kolo_grandparent_offsets[frame];
+         i < kolo_grandparent_offsets[frame + 1]; ++i) {
+        const KoloArtRect *rect = &kolo_grandparent_rects[i];
+        fill_rect(x + rect->x, y + rect->y, rect->width, rect->height,
+                  rect->color);
     }
-    if (grandmother) fill_rect(x + 1, y + 25, 18, 5, clothes);
-    else fill_rect(x + 4, y + 15, 12, 3, COLOR_WOOD);
 }
 
 static void draw_oven(int x, int y, unsigned phase)

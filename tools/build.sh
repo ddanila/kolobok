@@ -18,7 +18,7 @@ fi
 mkdir -p "$project_root/build"
 rm -f "$project_root/build/KOLOBOK.EXE" "$project_root/build/KOLOEDIT.EXE" "$project_root/build/WATCOM.LOG"
 pushd "$project_root/build" >/dev/null
-if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k8192 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
+if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k8192 -i="$project_root/src" -i="$project_root/build/generated" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOBOK.EXE \
     "$project_root/src/main.cpp" "$project_root/src/game.cpp" \
     "$project_root/src/game_state.cpp" \
@@ -29,7 +29,7 @@ if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k8192 -i="$project_root/src" ${t
     sed -n '1,200p' "$project_root/build/WATCOM.LOG" >&2
     exit 1
 fi
-if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k16384 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
+if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k16384 -i="$project_root/src" -i="$project_root/build/generated" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOEDIT.EXE \
     "$project_root/src/editor.cpp" "$project_root/src/editcore.cpp" \
     "$project_root/src/game_state.cpp" \
