@@ -42,14 +42,18 @@ build/test_game: tests/test_game.cpp src/game.cpp src/game.h src/assets.cpp src/
 build/test_music: tests/test_music.cpp src/music.cpp src/music.h src/assets.h
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc tests/test_music.cpp src/music.cpp -o $@
 
+build/test_editor: tests/test_editor.cpp src/editcore.cpp src/editcore.h src/assets.cpp src/assets.h
+	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc tests/test_editor.cpp src/editcore.cpp src/assets.cpp -o $@
+
 # tests/test_levels.py runs this over every KLV the Python compiler emits, so the
 # compiler can never accept a level the DOS runtime would reject.
 build/klvcheck: tests/klvcheck.cpp src/assets.cpp src/assets.h
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc tests/klvcheck.cpp src/assets.cpp -o $@
 
-host-test: build/test_game build/test_music build/klvcheck
+host-test: build/test_game build/test_music build/test_editor build/klvcheck
 	./build/test_game
 	./build/test_music
+	./build/test_editor
 	$(PYTHON) tools/assets.py --check
 	$(PYTHON) tests/test_levels.py
 	$(PYTHON) tests/test_balance.py

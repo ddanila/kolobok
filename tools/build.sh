@@ -30,7 +30,8 @@ if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k8192 -i="$project_root/src" ${t
 fi
 if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k16384 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOEDIT.EXE \
-    "$project_root/src/editor.cpp" "$project_root/src/game.cpp" \
+    "$project_root/src/editor.cpp" "$project_root/src/editcore.cpp" \
+    "$project_root/src/game.cpp" \
     "$project_root/src/assets.cpp" "$project_root/src/platform.cpp" \
     "$project_root/src/video.cpp" "$project_root/src/trace.cpp" >WATCOM-EDITOR.LOG 2>&1; then
     popd >/dev/null
