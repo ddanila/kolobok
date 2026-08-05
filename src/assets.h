@@ -27,58 +27,49 @@ typedef const u8 *KoloConstFarPtr;
 #define KOLO_MAX_ENCOUNTERS 8
 #define KOLO_MAX_SPRITES 15
 
-enum KoloTheme { KOLO_THEME_GARDEN, KOLO_THEME_FOREST, KOLO_THEME_DEEP };
-enum KoloPickupType { KOLO_PICKUP_RED, KOLO_PICKUP_BLUE, KOLO_PICKUP_SMALL_PIE, KOLO_PICKUP_BIG_PIE };
-enum KoloAnimalType { KOLO_ANIMAL_RABBIT, KOLO_ANIMAL_FOX, KOLO_ANIMAL_WOLF, KOLO_ANIMAL_BEAR };
-enum KoloTreeType { KOLO_TREE_FIR, KOLO_TREE_BIRCH, KOLO_TREE_OAK };
-enum KoloRewardType { KOLO_REWARD_NONE, KOLO_REWARD_BLUE, KOLO_REWARD_SMALL_PIE };
+struct Theme { enum Enum { GARDEN, FOREST, DEEP, COUNT }; };
+struct PickupType { enum Enum { RED, BLUE, SMALL_PIE, BIG_PIE, COUNT }; };
+struct AnimalType { enum Enum { RABBIT, FOX, WOLF, BEAR, COUNT }; };
+struct TreeType { enum Enum { FIR, BIRCH, OAK, COUNT }; };
+struct Reward { enum Enum { NONE, BLUE, SMALL_PIE, COUNT }; };
 
 /* Tile indices, collision flags and surface materials are a contract with
  * tools/assets.py, which paints the tile sheet in this order and emits the two
  * per-tile tables, and with tools/levels.py, which writes these indices into
  * the tile map. Reordering either side silently swaps tiles in game. */
-enum KoloTile {
-    KOLO_TILE_AIR,
-    KOLO_TILE_GRASS_TOP, KOLO_TILE_GRASS_BODY, KOLO_TILE_GRASS_PLATFORM,
-    KOLO_TILE_SPIKES,
-    KOLO_TILE_SAND_TOP, KOLO_TILE_SAND_BODY, KOLO_TILE_SAND_PLATFORM,
-    KOLO_TILE_ICE_TOP, KOLO_TILE_ICE_BODY, KOLO_TILE_ICE_PLATFORM,
-    KOLO_TILE_COUNT
+struct Tile {
+    enum Enum {
+        AIR,
+        GRASS_TOP, GRASS_BODY, GRASS_PLATFORM,
+        SPIKES,
+        SAND_TOP, SAND_BODY, SAND_PLATFORM,
+        ICE_TOP, ICE_BODY, ICE_PLATFORM,
+        COUNT
+    };
 };
 
-enum KoloTileFlag { KOLO_TILE_SOLID = 1, KOLO_TILE_HAZARD = 2 };
+struct TileFlag { enum Enum { SOLID = 1, HAZARD = 2 }; };
 
-enum KoloSurface {
-    KOLO_SURFACE_GRASS, KOLO_SURFACE_SAND, KOLO_SURFACE_ICE, KOLO_SURFACE_AIR
-};
+struct Surface { enum Enum { GRASS, SAND, ICE, AIR }; };
 
 /* Object kinds the editor can inspect; the renderer draws a panel per kind. The
  * field enums below are shared so that the row the editor adjusts and the row the
  * renderer labels can never drift apart. */
-enum KoloPropertyKind {
-    KOLO_PROP_PICKUP, KOLO_PROP_ANIMAL, KOLO_PROP_TREE, KOLO_PROP_LEVEL
-};
+struct PropertyKind { enum Enum { PICKUP, ANIMAL, TREE, LEVEL }; };
 
-enum KoloPickupField {
-    KOLO_PICKUP_FIELD_SUBTYPE, KOLO_PICKUP_FIELD_FLAGS, KOLO_PICKUP_FIELD_COUNT
-};
+struct PickupField { enum Enum { SUBTYPE, FLAGS, COUNT }; };
 
-enum KoloTreeField {
-    KOLO_TREE_FIELD_TYPE, KOLO_TREE_FIELD_FLAGS, KOLO_TREE_FIELD_HEIGHT,
-    KOLO_TREE_FIELD_COUNT
-};
+struct TreeField { enum Enum { TYPE, FLAGS, HEIGHT, COUNT }; };
 
-enum KoloLevelField {
-    KOLO_LEVEL_FIELD_THEME, KOLO_LEVEL_FIELD_REQUIRED_RED,
-    KOLO_LEVEL_FIELD_CLOUD_SEED, KOLO_LEVEL_FIELD_COUNT
-};
+struct LevelField { enum Enum { THEME, REQUIRED_RED, CLOUD_SEED, COUNT }; };
 
-enum KoloAnimalField {
-    KOLO_ANIMAL_FIELD_SUBTYPE, KOLO_ANIMAL_FIELD_FLAGS, KOLO_ANIMAL_FIELD_DIALOGUE,
-    KOLO_ANIMAL_FIELD_REWARD, KOLO_ANIMAL_FIELD_ANSWER,
-    KOLO_ANIMAL_FIELD_PATROL_LEFT, KOLO_ANIMAL_FIELD_PATROL_RIGHT,
-    KOLO_ANIMAL_FIELD_TREE, KOLO_ANIMAL_FIELD_CLIMB_TOP,
-    KOLO_ANIMAL_FIELD_CLIMB_BASE, KOLO_ANIMAL_FIELD_COUNT
+struct AnimalField {
+    enum Enum {
+        SUBTYPE, FLAGS, DIALOGUE, REWARD, ANSWER,
+        PATROL_LEFT, PATROL_RIGHT,
+        TREE, CLIMB_TOP, CLIMB_BASE,
+        COUNT
+    };
 };
 
 /* Stored in the KLV as an absent tree, dialogue or other cross-reference. */

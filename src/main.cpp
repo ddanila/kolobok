@@ -98,10 +98,10 @@ static int selftest_gameplay(const AssetPack *assets, GameState *game)
     for (i = 0; i < 30; ++i) game_step(game, &input);
     if (game->player.vx <= 0 || game->player.hp != KOLO_FULL_HP ||
         game->player.lives != KOLO_DEFAULT_LIVES) return 0;
-    game_apply_pickup(game, KOLO_PICKUP_BLUE);
+    game_apply_pickup(game, PickupType::BLUE);
     if (game->blue_timer != KOLO_BLUE_FRAMES) return 0;
     game->player.hp = 50;
-    game_apply_pickup(game, KOLO_PICKUP_SMALL_PIE);
+    game_apply_pickup(game, PickupType::SMALL_PIE);
     return game->player.hp == KOLO_FULL_HP && game->player.lives == KOLO_DEFAULT_LIVES;
 }
 
@@ -489,7 +489,7 @@ static void bot_track_stall(const GameState *game, const BotTarget *target,
     const LevelData *level = &game->assets->level;
     unsigned index = target->pickup_index;
     if (!target->is_pickup || index != *last_target ||
-        level->pickups[index].type == KOLO_PICKUP_RED) {
+        level->pickups[index].type == PickupType::RED) {
         *last_target = target->is_pickup ? index : BOT_NO_TARGET;
         *stall = 0;
         return;

@@ -134,10 +134,10 @@ static int far_equal(KoloConstFarPtr p, const char *text, unsigned length)
 
 unsigned kolo_property_field_count(unsigned kind)
 {
-    if (kind == KOLO_PROP_PICKUP) return KOLO_PICKUP_FIELD_COUNT;
-    if (kind == KOLO_PROP_ANIMAL) return KOLO_ANIMAL_FIELD_COUNT;
-    if (kind == KOLO_PROP_TREE) return KOLO_TREE_FIELD_COUNT;
-    return KOLO_LEVEL_FIELD_COUNT;
+    if (kind == PropertyKind::PICKUP) return PickupField::COUNT;
+    if (kind == PropertyKind::ANIMAL) return AnimalField::COUNT;
+    if (kind == PropertyKind::TREE) return TreeField::COUNT;
+    return LevelField::COUNT;
 }
 
 void level_free(LevelData *level)
@@ -196,10 +196,10 @@ static int validate_pickups(const LevelData *level, char *error, unsigned error_
     unsigned i, j, red = 0;
     for (i = 0; i < level->pickup_count; ++i) {
         const KoloPickup *pickup = &level->pickups[i];
-        if (pickup->type > KOLO_PICKUP_BIG_PIE ||
+        if (pickup->type > PickupType::BIG_PIE ||
             pickup->x >= level->width || pickup->y >= level->height)
             return set_error(error, error_size, "invalid pickup record");
-        if (pickup->type == KOLO_PICKUP_RED) ++red;
+        if (pickup->type == PickupType::RED) ++red;
         for (j = 0; j < i; ++j)
             if (level->pickups[j].id == pickup->id)
                 return set_error(error, error_size, "duplicate pickup ID");
@@ -214,7 +214,7 @@ static int validate_animals(const LevelData *level, char *error, unsigned error_
     unsigned i, j;
     for (i = 0; i < level->animal_count; ++i) {
         const KoloAnimalSpawn *animal = &level->animals[i];
-        if (animal->type > KOLO_ANIMAL_BEAR ||
+        if (animal->type > AnimalType::BEAR ||
             animal->x >= level->width || animal->y >= level->height ||
             animal->min_x > animal->x || animal->max_x < animal->x ||
             animal->max_x >= level->width)
@@ -231,7 +231,7 @@ static int validate_trees(const LevelData *level, char *error, unsigned error_si
     unsigned i, j;
     for (i = 0; i < level->tree_count; ++i) {
         const KoloTree *tree = &level->trees[i];
-        if (tree->type > KOLO_TREE_OAK || tree->x >= level->width ||
+        if (tree->type > TreeType::OAK || tree->x >= level->width ||
             tree->y >= level->height || !tree->height)
             return set_error(error, error_size, "invalid tree record");
         for (j = 0; j < i; ++j)
@@ -269,7 +269,7 @@ static int validate_cross_references(const LevelData *level, char *error,
         const KoloEncounter *encounter = &level->encounters[i];
         if (!animal_exists(level, encounter->animal_id))
             return set_error(error, error_size, "encounter refers to missing animal");
-        if (encounter->correct > 2 || encounter->reward > KOLO_REWARD_SMALL_PIE)
+        if (encounter->correct > 2 || encounter->reward > Reward::SMALL_PIE)
             return set_error(error, error_size, "invalid encounter record");
         for (j = 0; j < i; ++j)
             if (level->encounters[j].id == encounter->id)
@@ -289,13 +289,13 @@ int level_validate(const LevelData *level, char *error, unsigned error_size)
     if (level->width < KLV_MIN_WIDTH || level->width > KLV_MAX_WIDTH ||
         level->height != KOLO_LEVEL_HEIGHT)
         return set_error(error, error_size, "level must be 32..256 by 11 tiles");
-    if (level->theme > KOLO_THEME_DEEP || level->map == NULL)
+    if (level->theme >= Theme::COUNT || level->map == NULL)
         return set_error(error, error_size, "invalid level theme or tile map");
     if (!level_counts_in_range(level))
         return set_error(error, error_size, "level object limit exceeded");
     if (!validate_markers(level, error, error_size)) return 0;
     for (i = 0; i < level_map_bytes(level); ++i)
-        if (level->map[i] >= KOLO_TILE_COUNT)
+        if (level->map[i] >= Tile::COUNT)
             return set_error(error, error_size, "unknown tile in level");
     if (!validate_pickups(level, error, error_size)) return 0;
     if (!validate_animals(level, error, error_size)) return 0;

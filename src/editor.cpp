@@ -48,14 +48,14 @@ static int make_blank(LevelData *level)
     memset(level, 0, sizeof(*level));
     level->width = BLANK_WIDTH;
     level->height = KOLO_LEVEL_HEIGHT;
-    level->theme = KOLO_THEME_GARDEN;
+    level->theme = Theme::GARDEN;
     level->required_red = 1;
     level->cloud_seed = 1;
     level->map = (u8 *)calloc(BLANK_WIDTH * KOLO_LEVEL_HEIGHT, 1);
     if (!level->map) return 0;
     for (x = 0; x < BLANK_WIDTH; ++x) {
-        level->map[BLANK_GROUND_ROW * BLANK_WIDTH + x] = KOLO_TILE_GRASS_TOP;
-        level->map[(BLANK_GROUND_ROW + 1) * BLANK_WIDTH + x] = KOLO_TILE_GRASS_BODY;
+        level->map[BLANK_GROUND_ROW * BLANK_WIDTH + x] = Tile::GRASS_TOP;
+        level->map[(BLANK_GROUND_ROW + 1) * BLANK_WIDTH + x] = Tile::GRASS_BODY;
     }
     level->start.x = 2;
     level->start.y = 8;
@@ -65,13 +65,13 @@ static int make_blank(LevelData *level)
 
     level->pickup_count = 1;
     level->pickups[0].id = 1;
-    level->pickups[0].type = KOLO_PICKUP_RED;
+    level->pickups[0].type = PickupType::RED;
     level->pickups[0].x = 40;
     level->pickups[0].y = 8;
 
     level->animal_count = 1;
     level->animals[0].id = 1;
-    level->animals[0].type = KOLO_ANIMAL_RABBIT;
+    level->animals[0].type = AnimalType::RABBIT;
     level->animals[0].x = 70;
     level->animals[0].y = 8;
     level->animals[0].min_x = 65;
@@ -177,19 +177,19 @@ static int find_object(const LevelData *level, unsigned x, unsigned y,
     unsigned i;
     for (i = 0; i < level->pickup_count; ++i)
         if (level->pickups[i].x == x && level->pickups[i].y == y) {
-            *kind = KOLO_PROP_PICKUP;
+            *kind = PropertyKind::PICKUP;
             *index = i;
             return 1;
         }
     for (i = 0; i < level->animal_count; ++i)
         if (level->animals[i].x == x && level->animals[i].y == y) {
-            *kind = KOLO_PROP_ANIMAL;
+            *kind = PropertyKind::ANIMAL;
             *index = i;
             return 1;
         }
     for (i = 0; i < level->tree_count; ++i)
         if (level->trees[i].x == x && level->trees[i].y == y) {
-            *kind = KOLO_PROP_TREE;
+            *kind = PropertyKind::TREE;
             *index = i;
             return 1;
         }
@@ -230,9 +230,9 @@ static void adjust_tree_association(LevelData *level, KoloAnimalSpawn *animal, i
 
 static int adjust_level_property(LevelData *level, unsigned field, int delta)
 {
-    if (field == KOLO_LEVEL_FIELD_THEME) {
-        level->theme = wrap_u8(level->theme, delta, KOLO_THEME_DEEP + 1);
-    } else if (field == KOLO_LEVEL_FIELD_REQUIRED_RED) {
+    if (field == LevelField::THEME) {
+        level->theme = wrap_u8(level->theme, delta, Theme::COUNT);
+    } else if (field == LevelField::REQUIRED_RED) {
         level->required_red = (u8)clamp_int((int)level->required_red + delta,
                                             0, KOLO_MAX_PICKUPS);
     } else {
@@ -246,8 +246,8 @@ static int adjust_level_property(LevelData *level, unsigned field, int delta)
 
 static int adjust_pickup_property(KoloPickup *pickup, unsigned field, int delta)
 {
-    if (field == KOLO_PICKUP_FIELD_SUBTYPE)
-        pickup->type = wrap_u8(pickup->type, delta, KOLO_PICKUP_BIG_PIE + 1);
+    if (field == PickupField::SUBTYPE)
+        pickup->type = wrap_u8(pickup->type, delta, PickupType::COUNT);
     else
         pickup->flags = (u8)(pickup->flags + delta);
     return 1;
@@ -255,9 +255,9 @@ static int adjust_pickup_property(KoloPickup *pickup, unsigned field, int delta)
 
 static int adjust_tree_property(KoloTree *tree, unsigned field, int delta)
 {
-    if (field == KOLO_TREE_FIELD_TYPE)
-        tree->type = wrap_u8(tree->type, delta, KOLO_TREE_OAK + 1);
-    else if (field == KOLO_TREE_FIELD_FLAGS)
+    if (field == TreeField::TYPE)
+        tree->type = wrap_u8(tree->type, delta, TreeType::COUNT);
+    else if (field == TreeField::FLAGS)
         tree->flags = (u8)(tree->flags + delta);
     else
         tree->height = (u8)clamp_int((int)tree->height + delta, 1, MAX_TREE_HEIGHT);
@@ -273,13 +273,13 @@ static int adjust_animal_property(LevelData *level, unsigned index,
     KoloEncounter *encounter;
     int value;
     switch (field) {
-    case KOLO_ANIMAL_FIELD_SUBTYPE:
-        animal->type = wrap_u8(animal->type, delta, KOLO_ANIMAL_BEAR + 1);
+    case AnimalField::SUBTYPE:
+        animal->type = wrap_u8(animal->type, delta, AnimalType::COUNT);
         break;
-    case KOLO_ANIMAL_FIELD_FLAGS:
+    case AnimalField::FLAGS:
         animal->flags = (u8)(animal->flags + delta);
         break;
-    case KOLO_ANIMAL_FIELD_DIALOGUE:
+    case AnimalField::DIALOGUE:
         value = animal->dialogue_id == KOLO_NO_ID ? 1 : (int)animal->dialogue_id + delta;
         if (value < 1) value = MAX_DIALOGUE_ID;
         if (value > MAX_DIALOGUE_ID) value = 1;
@@ -287,29 +287,29 @@ static int adjust_animal_property(LevelData *level, unsigned index,
         encounter = encounter_for(level, animal->id, 1);
         if (encounter) encounter->dialogue_id = (u8)value;
         break;
-    case KOLO_ANIMAL_FIELD_REWARD:
+    case AnimalField::REWARD:
         encounter = encounter_for(level, animal->id, 1);
         if (!encounter) return 0;
-        encounter->reward = wrap_u8(encounter->reward, delta, KOLO_REWARD_SMALL_PIE + 1);
+        encounter->reward = wrap_u8(encounter->reward, delta, Reward::COUNT);
         animal->flags |= 1;
         break;
-    case KOLO_ANIMAL_FIELD_ANSWER:
+    case AnimalField::ANSWER:
         encounter = encounter_for(level, animal->id, 1);
         if (!encounter) return 0;
         encounter->correct = wrap_u8(encounter->correct, delta, 3);
         animal->flags |= 1;
         break;
-    case KOLO_ANIMAL_FIELD_PATROL_LEFT:
+    case AnimalField::PATROL_LEFT:
         animal->min_x = (u16)clamp_int((int)animal->min_x + delta, 0, (int)animal->x);
         break;
-    case KOLO_ANIMAL_FIELD_PATROL_RIGHT:
+    case AnimalField::PATROL_RIGHT:
         animal->max_x = (u16)clamp_int((int)animal->max_x + delta, (int)animal->x,
                                        (int)level->width - 1);
         break;
-    case KOLO_ANIMAL_FIELD_TREE:
+    case AnimalField::TREE:
         adjust_tree_association(level, animal, delta);
         break;
-    case KOLO_ANIMAL_FIELD_CLIMB_TOP:
+    case AnimalField::CLIMB_TOP:
         animal->climb_min = (u16)clamp_int((int)animal->climb_min + delta, 0,
                                            (int)animal->climb_max);
         break;
@@ -325,12 +325,12 @@ static int adjust_animal_property(LevelData *level, unsigned index,
 static int adjust_property(LevelData *level, unsigned kind, unsigned index,
                           unsigned field, int delta)
 {
-    if (kind == KOLO_PROP_LEVEL) return adjust_level_property(level, field, delta);
-    if (kind == KOLO_PROP_PICKUP && index < level->pickup_count)
+    if (kind == PropertyKind::LEVEL) return adjust_level_property(level, field, delta);
+    if (kind == PropertyKind::PICKUP && index < level->pickup_count)
         return adjust_pickup_property(&level->pickups[index], field, delta);
-    if (kind == KOLO_PROP_TREE && index < level->tree_count)
+    if (kind == PropertyKind::TREE && index < level->tree_count)
         return adjust_tree_property(&level->trees[index], field, delta);
-    if (kind == KOLO_PROP_ANIMAL && index < level->animal_count)
+    if (kind == PropertyKind::ANIMAL && index < level->animal_count)
         return adjust_animal_property(level, index, field, delta);
     return 0;
 }
@@ -515,7 +515,7 @@ static void erase_at_cursor(Editor *editor)
 {
     LevelData *level = &editor->assets.level;
     if (editor->layer == LAYER_TILE) {
-        level->map[editor->cursor_y * level->width + editor->cursor_x] = KOLO_TILE_AIR;
+        level->map[editor->cursor_y * level->width + editor->cursor_x] = Tile::AIR;
         editor->dirty = 1;
     } else if (editor->layer == LAYER_OBJECT &&
                erase_object(level, editor->cursor_x, editor->cursor_y)) {
@@ -564,7 +564,7 @@ static void handle_editing(Editor *editor)
         editor->dirty = 0;
     if (key_pressed(KEY_F3))
         editor->valid = level_validate(level, editor->error, sizeof(editor->error));
-    if (key_pressed(KEY_F4)) open_property_modal(editor, KOLO_PROP_LEVEL, 0);
+    if (key_pressed(KEY_F4)) open_property_modal(editor, PropertyKind::LEVEL, 0);
 }
 
 static void render_editor(Editor *editor)
@@ -598,13 +598,13 @@ static int editor_selftest(void)
     remove(path);
     remove("EDITTEST.TMP");
     if (!make_blank(&level)) return 0;
-    level.map[5 * BLANK_WIDTH + 10] = KOLO_TILE_GRASS_PLATFORM;
+    level.map[5 * BLANK_WIDTH + 10] = Tile::GRASS_PLATFORM;
     level.checkpoint_count = 1;
     level.checkpoints[0].x = 20;
     level.checkpoints[0].y = 8;
     level.tree_count = 1;
     level.trees[0].id = 10;
-    level.trees[0].type = KOLO_TREE_OAK;
+    level.trees[0].type = TreeType::OAK;
     level.trees[0].x = 55;
     level.trees[0].y = 8;
     level.trees[0].height = 4;
@@ -612,7 +612,7 @@ static int editor_selftest(void)
     animal = &level.animals[1];
     memset(animal, 0, sizeof(*animal));
     animal->id = 2;
-    animal->type = KOLO_ANIMAL_FOX;
+    animal->type = AnimalType::FOX;
     animal->x = 60;
     animal->y = 8;
     animal->min_x = 57;
@@ -623,17 +623,17 @@ static int editor_selftest(void)
     /* Escaping a property modal restores the level wholesale, so confirm a struct
      * copy really does undo an edit before relying on it below. */
     backup = level;
-    adjust_property(&level, KOLO_PROP_ANIMAL, 1, KOLO_ANIMAL_FIELD_SUBTYPE, 1);
+    adjust_property(&level, PropertyKind::ANIMAL, 1, AnimalField::SUBTYPE, 1);
     level = backup;
-    if (level.animals[1].type != KOLO_ANIMAL_FOX) return 0;
+    if (level.animals[1].type != AnimalType::FOX) return 0;
 
-    adjust_property(&level, KOLO_PROP_LEVEL, 0, KOLO_LEVEL_FIELD_THEME, 1);
-    adjust_property(&level, KOLO_PROP_LEVEL, 0, KOLO_LEVEL_FIELD_REQUIRED_RED, -1);
-    adjust_property(&level, KOLO_PROP_LEVEL, 0, KOLO_LEVEL_FIELD_CLOUD_SEED, 1);
-    for (field = 0; field < KOLO_ANIMAL_FIELD_COUNT; ++field) {
-        int delta = field == KOLO_ANIMAL_FIELD_PATROL_LEFT ||
-                    field == KOLO_ANIMAL_FIELD_CLIMB_TOP ? -1 : 1;
-        adjust_property(&level, KOLO_PROP_ANIMAL, 1, field, delta);
+    adjust_property(&level, PropertyKind::LEVEL, 0, LevelField::THEME, 1);
+    adjust_property(&level, PropertyKind::LEVEL, 0, LevelField::REQUIRED_RED, -1);
+    adjust_property(&level, PropertyKind::LEVEL, 0, LevelField::CLOUD_SEED, 1);
+    for (field = 0; field < AnimalField::COUNT; ++field) {
+        int delta = field == AnimalField::PATROL_LEFT ||
+                    field == AnimalField::CLIMB_TOP ? -1 : 1;
+        adjust_property(&level, PropertyKind::ANIMAL, 1, field, delta);
     }
     if (!level_save(&level, path, error, sizeof(error))) {
         printf("KOLOEDIT SELFTEST FAIL %s\n", error);
@@ -648,20 +648,20 @@ static int editor_selftest(void)
     }
     animal = &check.animals[1];
     encounter = encounter_for(&check, animal->id, 0);
-    if (check.map[5 * BLANK_WIDTH + 10] != KOLO_TILE_GRASS_PLATFORM ||
-        check.checkpoint_count != 1 || check.theme != KOLO_THEME_FOREST ||
+    if (check.map[5 * BLANK_WIDTH + 10] != Tile::GRASS_PLATFORM ||
+        check.checkpoint_count != 1 || check.theme != Theme::FOREST ||
         check.required_red != 0 || check.cloud_seed != 2 ||
-        animal->type != KOLO_ANIMAL_WOLF || animal->flags != 1 ||
+        animal->type != AnimalType::WOLF || animal->flags != 1 ||
         animal->dialogue_id != 1 || animal->min_x != 56 || animal->max_x != 64 ||
         animal->tree_id != 10 || animal->climb_min != 7 || animal->climb_max != 9 ||
-        !encounter || encounter->reward != KOLO_REWARD_BLUE || encounter->correct != 1) {
+        !encounter || encounter->reward != Reward::BLUE || encounter->correct != 1) {
         level_free(&check);
         return 0;
     }
 
     /* Saving a level that lost objects must shrink the payload, not leave stale
      * records behind, so round-trip an erase as well as an edit. */
-    check.map[5 * BLANK_WIDTH + 10] = KOLO_TILE_AIR;
+    check.map[5 * BLANK_WIDTH + 10] = Tile::AIR;
     check.checkpoint_count = 0;
     if (!level_save(&check, path, error, sizeof(error))) {
         level_free(&check);
@@ -669,7 +669,7 @@ static int editor_selftest(void)
     }
     level_free(&check);
     if (!level_load(&check, path, error, sizeof(error)) ||
-        check.map[5 * BLANK_WIDTH + 10] != KOLO_TILE_AIR || check.checkpoint_count != 0) {
+        check.map[5 * BLANK_WIDTH + 10] != Tile::AIR || check.checkpoint_count != 0) {
         level_free(&check);
         return 0;
     }

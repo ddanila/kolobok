@@ -51,11 +51,11 @@ static u8 tile_at(const GameState *game, int x, int y)
 {
     const LevelData *level = &game->assets->level;
     int tx, ty;
-    if (x < 0 || x >= (int)level->width * KOLO_TILE_SIZE) return KOLO_TILE_GRASS_BODY;
-    if (y < 0) return KOLO_TILE_AIR;
+    if (x < 0 || x >= (int)level->width * KOLO_TILE_SIZE) return Tile::GRASS_BODY;
+    if (y < 0) return Tile::AIR;
     tx = x / KOLO_TILE_SIZE;
     ty = y / KOLO_TILE_SIZE;
-    if (ty >= level->height) return KOLO_TILE_SPIKES;
+    if (ty >= level->height) return Tile::SPIKES;
     return level->map[ty * level->width + tx];
 }
 
@@ -68,19 +68,19 @@ static int tile_has_flag(const GameState *game, int x, int y, u8 flag)
 
 int game_tile_solid(const GameState *game, int x, int y)
 {
-    return tile_has_flag(game, x, y, KOLO_TILE_SOLID);
+    return tile_has_flag(game, x, y, TileFlag::SOLID);
 }
 
 int game_tile_hazard(const GameState *game, int x, int y)
 {
-    return tile_has_flag(game, x, y, KOLO_TILE_HAZARD);
+    return tile_has_flag(game, x, y, TileFlag::HAZARD);
 }
 
 u8 game_surface_at(const GameState *game, int x, int y)
 {
     u8 tile = tile_at(game, x, y);
     return tile < game->assets->tile_count ? game->assets->tile_material[tile]
-                                           : KOLO_SURFACE_AIR;
+                                           : Surface::AIR;
 }
 
 static void event_add(GameState *game, u16 event)
@@ -117,9 +117,9 @@ void game_lose_life(GameState *game)
 
 static s32 animal_patrol_speed(u8 type)
 {
-    if (type == KOLO_ANIMAL_RABBIT) return RABBIT_HOP_SPEED;
-    if (type == KOLO_ANIMAL_FOX) return -FOX_PATROL_SPEED;
-    if (type == KOLO_ANIMAL_WOLF) return -WOLF_PATROL_SPEED;
+    if (type == AnimalType::RABBIT) return RABBIT_HOP_SPEED;
+    if (type == AnimalType::FOX) return -FOX_PATROL_SPEED;
+    if (type == AnimalType::WOLF) return -WOLF_PATROL_SPEED;
     return -BEAR_PATROL_SPEED;
 }
 
@@ -140,7 +140,7 @@ static void spawn_enemies(GameState *game)
         enemy->min_x = fp(tiles_to_px(spawn->min_x));
         enemy->max_x = fp(tiles_to_px(spawn->max_x));
         enemy->vx = animal_patrol_speed(spawn->type);
-        if (spawn->type == KOLO_ANIMAL_RABBIT) {
+        if (spawn->type == AnimalType::RABBIT) {
             enemy->state = KOLO_AI_WAIT;
             enemy->timer = WAIT_FRAMES;
         }
@@ -254,8 +254,8 @@ void game_damage(GameState *game, u8 type, int source_x)
     PlayerState *p = &game->player;
     u8 amount;
     if (p->invulnerable || game->game_over) return;
-    amount = damage[type <= KOLO_ANIMAL_BEAR ? type : KOLO_ANIMAL_BEAR];
-    if (type <= KOLO_ANIMAL_FOX && p->hp <= amount) {
+    amount = damage[type <= AnimalType::BEAR ? type : AnimalType::BEAR];
+    if (type <= AnimalType::FOX && p->hp <= amount) {
         p->hp = 1;
     } else if (p->hp <= amount) {
         p->hp = 0;
@@ -428,9 +428,9 @@ static void update_enemy_ai(GameState *game, unsigned index)
         return;
     }
     switch (e->type) {
-    case KOLO_ANIMAL_RABBIT: update_rabbit(e); break;
-    case KOLO_ANIMAL_FOX:    update_fox(e, dx, dy); break;
-    case KOLO_ANIMAL_WOLF:   update_wolf(e, dx, dy); break;
+    case AnimalType::RABBIT: update_rabbit(e); break;
+    case AnimalType::FOX:    update_fox(e, dx, dy); break;
+    case AnimalType::WOLF:   update_wolf(e, dx, dy); break;
     default:                 update_bear(game, e, spawn); break;
     }
 }
@@ -465,17 +465,17 @@ static void update_enemies(GameState *game, int old_bottom)
 int game_apply_pickup(GameState *game, u8 type)
 {
     PlayerState *p = &game->player;
-    if (type == KOLO_PICKUP_RED) {
+    if (type == PickupType::RED) {
         ++game->red_collected;
         event_add(game, KOLO_EVENT_BERRY);
         return 1;
     }
-    if (type == KOLO_PICKUP_BLUE) {
+    if (type == PickupType::BLUE) {
         game->blue_timer = KOLO_BLUE_FRAMES;
         event_add(game, KOLO_EVENT_BLUE);
         return 1;
     }
-    if (type == KOLO_PICKUP_SMALL_PIE) {
+    if (type == PickupType::SMALL_PIE) {
         if (p->hp == KOLO_FULL_HP && p->lives >= KOLO_DEFAULT_LIVES) return 0;
         p->hp = KOLO_FULL_HP;
         if (p->lives < KOLO_DEFAULT_LIVES) ++p->lives;
@@ -567,8 +567,8 @@ int game_try_talk(GameState *game)
 
 static void grant_reward(GameState *game, u8 reward)
 {
-    if (reward == KOLO_REWARD_BLUE) game_apply_pickup(game, KOLO_PICKUP_BLUE);
-    else if (reward == KOLO_REWARD_SMALL_PIE) game_apply_pickup(game, KOLO_PICKUP_SMALL_PIE);
+    if (reward == Reward::BLUE) game_apply_pickup(game, PickupType::BLUE);
+    else if (reward == Reward::SMALL_PIE) game_apply_pickup(game, PickupType::SMALL_PIE);
 }
 
 int game_answer_dialogue(GameState *game, unsigned answer)
@@ -599,11 +599,11 @@ int game_answer_dialogue(GameState *game, unsigned answer)
 static SurfaceGrip grip_for(u8 surface)
 {
     SurfaceGrip grip;
-    if (surface == KOLO_SURFACE_SAND) {
+    if (surface == Surface::SAND) {
         grip.accel = 24; grip.reverse = 48; grip.max_speed = 512; grip.brake = 32;
-    } else if (surface == KOLO_SURFACE_ICE) {
+    } else if (surface == Surface::ICE) {
         grip.accel = 16; grip.reverse = 24; grip.max_speed = 704; grip.brake = 4;
-    } else if (surface == KOLO_SURFACE_AIR) {
+    } else if (surface == Surface::AIR) {
         grip.accel = 16; grip.reverse = 16; grip.max_speed = 640; grip.brake = 0;
     } else {
         grip.accel = 32; grip.reverse = 64; grip.max_speed = 640; grip.brake = 20;
@@ -616,7 +616,7 @@ static SurfaceGrip player_grip(const GameState *game)
     const PlayerState *p = &game->player;
     u8 surface = p->on_ground
         ? game_surface_at(game, px(p->x) + KOLO_PLAYER_W / 2, px(p->y) + KOLO_PLAYER_H + 1)
-        : KOLO_SURFACE_AIR;
+        : Surface::AIR;
     SurfaceGrip grip = grip_for(surface);
     if (game->blue_timer) {
         grip.accel = grip.accel * 5 / 4;

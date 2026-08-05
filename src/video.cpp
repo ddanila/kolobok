@@ -62,8 +62,7 @@ typedef struct ThemeStyle {
     unsigned cloud_spacing, cloud_parallax;
 } ThemeStyle;
 
-/* Indexed by KoloTheme. */
-static const ThemeStyle theme_styles[3] = {
+static const ThemeStyle theme_styles[Theme::COUNT] = {
     {COLOR_SKY,      COLOR_SKY_DEEP, COLOR_PINE, COLOR_CREAM, 68,  8},
     {COLOR_SKY_DEEP, COLOR_PINE,     COLOR_PINE, COLOR_CREAM, 104, 12},
     {COLOR_NIGHT,    COLOR_SOOT,     COLOR_SOOT, COLOR_GREY,  184, 12}
@@ -71,8 +70,8 @@ static const ThemeStyle theme_styles[3] = {
 
 static const ThemeStyle *style_for(const LevelData *level)
 {
-    return &theme_styles[level->theme <= KOLO_THEME_DEEP ? level->theme
-                                                         : KOLO_THEME_GARDEN];
+    u8 theme = level->theme < Theme::COUNT ? level->theme : Theme::GARDEN;
+    return &theme_styles[theme];
 }
 
 static unsigned char __far *scratch;
@@ -483,7 +482,7 @@ static void draw_background(int camera, int pan, int preserve_hud,
     fill_rect(0, HORIZON_Y, LOGICAL_W, SCREEN_H - HORIZON_Y, style->horizon);
     if (camera < 0) camera = 0;
     if (camera > MAX_CAMERA) camera = MAX_CAMERA;
-    if (level->theme != KOLO_THEME_GARDEN) draw_tree_band(camera, pan, style);
+    if (level->theme != Theme::GARDEN) draw_tree_band(camera, pan, style);
     draw_cloud_band(camera, pan, level, style);
 }
 
@@ -513,11 +512,11 @@ static void draw_level_trees(const AssetPack *assets, int camera)
         int x = tree->x * TILE - camera;
         int base = HUD_H + tree->y * TILE + TILE;
         int height = tree->height * 12;
-        unsigned char trunk = tree->type == KOLO_TREE_BIRCH ? COLOR_GREY_LIGHT : COLOR_BARK;
-        unsigned char leaf = tree->type == KOLO_TREE_FIR ? COLOR_PINE : COLOR_FOLIAGE;
+        unsigned char trunk = tree->type == TreeType::BIRCH ? COLOR_GREY_LIGHT : COLOR_BARK;
+        unsigned char leaf = tree->type == TreeType::FIR ? COLOR_PINE : COLOR_FOLIAGE;
         if (x < -24 || x > LOGICAL_W + 8) continue;
         fill_rect(x + 7, base - height, 4, height, trunk);
-        if (tree->type == KOLO_TREE_FIR) {
+        if (tree->type == TreeType::FIR) {
             int row;
             for (row = 0; row < tree->height; ++row)
                 fill_rect(x + 1 + row, base - height + row * 8,
@@ -623,7 +622,7 @@ static void draw_world(const GameState *game, int preserve_hud)
     draw_pan = (unsigned char)pan;
     if (profile_enabled) stage = platform_profile_timer_read();
     draw_background(actual_camera, pan, preserve_hud, &assets->level);
-    if (assets->level.theme == KOLO_THEME_GARDEN || assets->level.theme == KOLO_THEME_DEEP)
+    if (assets->level.theme == Theme::GARDEN || assets->level.theme == Theme::DEEP)
         draw_cottage(assets, camera);
     draw_level_trees(assets, camera);
     if (profile_enabled) profile.background_ticks += profile_elapsed(stage);
@@ -894,7 +893,7 @@ void video_render_dialogue(const GameState *game, unsigned selection)
         {"1 BEAR", "2 WOLF", "3 FOX"}
     };
     unsigned id = 0, i;
-    unsigned char panel = game->assets->level.theme == KOLO_THEME_DEEP
+    unsigned char panel = game->assets->level.theme == Theme::DEEP
         ? COLOR_PURPLE : COLOR_PINE;
     if (game->active_encounter >= 0)
         id = game->assets->level.encounters[(unsigned)game->active_encounter].dialogue_id;
@@ -1097,8 +1096,8 @@ void video_render_credits(const GameState *game, u32 ticks)
 
 static const char *theme_name(u8 theme)
 {
-    return theme == KOLO_THEME_GARDEN ? "GARDEN"
-         : theme == KOLO_THEME_FOREST ? "FOREST" : "DEEP";
+    return theme == Theme::GARDEN ? "GARDEN"
+         : theme == Theme::FOREST ? "FOREST" : "DEEP";
 }
 
 void video_render_editor(const GameState *game, unsigned cursor_x, unsigned cursor_y,
@@ -1193,9 +1192,9 @@ static void draw_property_number(int x, int y, unsigned value, int selected)
 static void draw_pickup_row(const KoloPickup *pickup, unsigned row, int y, int selected)
 {
     static const char *types[4] = {"RED BERRY", "BLUE BERRY", "SMALL PIE", "BIG PIE"};
-    static const char *names[KOLO_PICKUP_FIELD_COUNT] = {"SUBTYPE", "FLAGS"};
+    static const char *names[PickupField::COUNT] = {"SUBTYPE", "FLAGS"};
     draw_property_name(y, names[row]);
-    if (row == KOLO_PICKUP_FIELD_SUBTYPE)
+    if (row == PickupField::SUBTYPE)
         draw_property_text(PROPERTY_VALUE_X, y, types[pickup->type], selected);
     else
         draw_property_number(PROPERTY_VALUE_X, y, pickup->flags, selected);
@@ -1204,27 +1203,27 @@ static void draw_pickup_row(const KoloPickup *pickup, unsigned row, int y, int s
 static void draw_tree_row(const KoloTree *tree, unsigned row, int y, int selected)
 {
     static const char *types[3] = {"FIR", "BIRCH", "OAK"};
-    static const char *names[KOLO_TREE_FIELD_COUNT] = {"TREE TYPE", "FLAGS", "HEIGHT"};
+    static const char *names[TreeField::COUNT] = {"TREE TYPE", "FLAGS", "HEIGHT"};
     draw_property_name(y, names[row]);
-    if (row == KOLO_TREE_FIELD_TYPE)
+    if (row == TreeField::TYPE)
         draw_property_text(PROPERTY_VALUE_X, y, types[tree->type], selected);
     else
         draw_property_number(PROPERTY_VALUE_X, y,
-                             row == KOLO_TREE_FIELD_FLAGS ? tree->flags : tree->height,
+                             row == TreeField::FLAGS ? tree->flags : tree->height,
                              selected);
 }
 
 static void draw_level_row(const LevelData *level, unsigned row, int y, int selected)
 {
-    static const char *names[KOLO_LEVEL_FIELD_COUNT] = {
+    static const char *names[LevelField::COUNT] = {
         "THEME", "REQUIRED RED", "CLOUD SEED"
     };
     draw_property_name(y, names[row]);
-    if (row == KOLO_LEVEL_FIELD_THEME)
+    if (row == LevelField::THEME)
         draw_property_text(PROPERTY_VALUE_X, y, theme_name(level->theme), selected);
     else
         draw_property_number(PROPERTY_VALUE_X, y,
-                             row == KOLO_LEVEL_FIELD_REQUIRED_RED
+                             row == LevelField::REQUIRED_RED
                                  ? level->required_red : (unsigned)level->cloud_seed,
                              selected);
 }
@@ -1232,7 +1231,7 @@ static void draw_level_row(const LevelData *level, unsigned row, int y, int sele
 static void draw_animal_row(const LevelData *level, const KoloAnimalSpawn *animal,
                             unsigned row, int y, int selected)
 {
-    static const char *names[KOLO_ANIMAL_FIELD_COUNT] = {
+    static const char *names[AnimalField::COUNT] = {
         "SUBTYPE", "FLAGS", "DIALOGUE ID", "REWARD", "CORRECT ANSWER",
         "PATROL LEFT", "PATROL RIGHT", "CLIMB TREE", "CLIMB TOP", "CLIMB BASE"
     };
@@ -1241,31 +1240,31 @@ static void draw_animal_row(const LevelData *level, const KoloAnimalSpawn *anima
     const KoloEncounter *encounter = encounter_for_animal(level, animal->id);
     unsigned value;
     draw_property_name(y, names[row]);
-    if (row == KOLO_ANIMAL_FIELD_SUBTYPE) {
+    if (row == AnimalField::SUBTYPE) {
         draw_property_text(ANIMAL_VALUE_X, y, types[animal->type], selected);
         return;
     }
-    if (row == KOLO_ANIMAL_FIELD_REWARD) {
+    if (row == AnimalField::REWARD) {
         draw_property_text(ANIMAL_VALUE_X, y,
                            rewards[encounter ? encounter->reward : 0], selected);
         return;
     }
-    if (row == KOLO_ANIMAL_FIELD_TREE && animal->tree_id == KOLO_NO_ID) {
+    if (row == AnimalField::TREE && animal->tree_id == KOLO_NO_ID) {
         draw_property_text(ANIMAL_VALUE_X, y, "NONE", selected);
         return;
     }
     switch (row) {
-    case KOLO_ANIMAL_FIELD_FLAGS:        value = animal->flags; break;
-    case KOLO_ANIMAL_FIELD_DIALOGUE:
+    case AnimalField::FLAGS:        value = animal->flags; break;
+    case AnimalField::DIALOGUE:
         value = animal->dialogue_id == KOLO_NO_ID ? 0 : animal->dialogue_id;
         break;
-    case KOLO_ANIMAL_FIELD_ANSWER:
+    case AnimalField::ANSWER:
         value = encounter ? (unsigned)encounter->correct + 1 : 1;
         break;
-    case KOLO_ANIMAL_FIELD_PATROL_LEFT:  value = animal->min_x; break;
-    case KOLO_ANIMAL_FIELD_PATROL_RIGHT: value = animal->max_x; break;
-    case KOLO_ANIMAL_FIELD_TREE:         value = animal->tree_id; break;
-    case KOLO_ANIMAL_FIELD_CLIMB_TOP:    value = animal->climb_min; break;
+    case AnimalField::PATROL_LEFT:  value = animal->min_x; break;
+    case AnimalField::PATROL_RIGHT: value = animal->max_x; break;
+    case AnimalField::TREE:         value = animal->tree_id; break;
+    case AnimalField::CLIMB_TOP:    value = animal->climb_min; break;
     default:                             value = animal->climb_max; break;
     }
     draw_property_number(ANIMAL_VALUE_X, y, value, selected);
@@ -1284,18 +1283,18 @@ void video_render_editor_properties(const GameState *game, unsigned kind,
     fill_rect(25 + draw_pan, 25, 270, 158, COLOR_NIGHT);
     fill_rect(29 + draw_pan, 29, 262, 150, COLOR_PINE);
     draw_text(80 + draw_pan, 34,
-              titles[kind <= KOLO_PROP_LEVEL ? kind : KOLO_PROP_LEVEL], COLOR_WHITE, 1);
+              titles[kind <= PropertyKind::LEVEL ? kind : PropertyKind::LEVEL], COLOR_WHITE, 1);
     for (row = 0; row < count; ++row) {
         int y = 50 + (int)row * 12;
         int selected = row == field;
         draw_text(40 + draw_pan, y, selected ? "1" : " ", COLOR_YELLOW, 1);
-        if (kind == KOLO_PROP_PICKUP && index < level->pickup_count)
+        if (kind == PropertyKind::PICKUP && index < level->pickup_count)
             draw_pickup_row(&level->pickups[index], row, y, selected);
-        else if (kind == KOLO_PROP_TREE && index < level->tree_count)
+        else if (kind == PropertyKind::TREE && index < level->tree_count)
             draw_tree_row(&level->trees[index], row, y, selected);
-        else if (kind == KOLO_PROP_LEVEL)
+        else if (kind == PropertyKind::LEVEL)
             draw_level_row(level, row, y, selected);
-        else if (kind == KOLO_PROP_ANIMAL && index < level->animal_count)
+        else if (kind == PropertyKind::ANIMAL && index < level->animal_count)
             draw_animal_row(level, &level->animals[index], row, y, selected);
     }
     draw_text(46 + draw_pan, 169, "ARROWS EDIT  ENTER OK  ESC CANCEL", COLOR_LEMON, 1);

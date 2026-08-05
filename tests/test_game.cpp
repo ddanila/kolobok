@@ -74,7 +74,7 @@ static void test_assets_and_levels(void)
     AssetPack p;
     load(&p, "GARDEN", GARDEN_LEVEL);
     assert(p.level.width == 96 && p.level.height == KOLO_LEVEL_HEIGHT);
-    assert(p.tile_count == KOLO_TILE_COUNT && p.sprite_count == KOLO_MAX_SPRITES);
+    assert(p.tile_count == Tile::COUNT && p.sprite_count == KOLO_MAX_SPRITES);
     assert(p.level.required_red == 6 && p.level.pickup_count == 10);
     assert(p.level.animal_count == 8);
     assets_free(&p);
@@ -158,7 +158,7 @@ static void test_boost_and_pies(void)
     load(&p, "GARDEN", GARDEN_LEVEL);
     game_init(&g, &p);
 
-    assert(game_apply_pickup(&g, KOLO_PICKUP_BLUE));
+    assert(game_apply_pickup(&g, PickupType::BLUE));
     assert(g.blue_timer == KOLO_BLUE_FRAMES);
     g.player.on_ground = 1;
     g.player.vx = 0;
@@ -168,7 +168,7 @@ static void test_boost_and_pies(void)
 
     /* A second blue berry refreshes the boost rather than stacking it. */
     step(&g, 10);
-    game_apply_pickup(&g, KOLO_PICKUP_BLUE);
+    game_apply_pickup(&g, PickupType::BLUE);
     assert(g.blue_timer == KOLO_BLUE_FRAMES);
     step(&g, KOLO_BLUE_FRAMES);
     assert(g.blue_timer == 0);
@@ -176,23 +176,23 @@ static void test_boost_and_pies(void)
     /* A small pie is refused when it would do nothing, so it stays on the map. */
     g.player.hp = KOLO_FULL_HP;
     g.player.lives = KOLO_DEFAULT_LIVES;
-    assert(!game_apply_pickup(&g, KOLO_PICKUP_SMALL_PIE));
+    assert(!game_apply_pickup(&g, PickupType::SMALL_PIE));
 
     g.player.hp = 50;
-    assert(game_apply_pickup(&g, KOLO_PICKUP_SMALL_PIE));
+    assert(game_apply_pickup(&g, PickupType::SMALL_PIE));
     assert(g.player.hp == KOLO_FULL_HP && g.player.lives == KOLO_DEFAULT_LIVES);
 
     g.player.hp = 50;
     g.player.lives = 2;
-    game_apply_pickup(&g, KOLO_PICKUP_SMALL_PIE);
+    game_apply_pickup(&g, PickupType::SMALL_PIE);
     assert(g.player.hp == KOLO_FULL_HP && g.player.lives == KOLO_DEFAULT_LIVES);
 
     /* A big pie grants the bonus life only from a full three. */
     g.player.lives = KOLO_DEFAULT_LIVES;
-    game_apply_pickup(&g, KOLO_PICKUP_BIG_PIE);
+    game_apply_pickup(&g, PickupType::BIG_PIE);
     assert(g.player.lives == KOLO_MAX_LIVES);
     g.player.lives = 1;
-    game_apply_pickup(&g, KOLO_PICKUP_BIG_PIE);
+    game_apply_pickup(&g, PickupType::BIG_PIE);
     assert(g.player.lives == KOLO_DEFAULT_LIVES);
     assets_free(&p);
 }
@@ -205,7 +205,7 @@ static void test_damage_lives_checkpoint(void)
     game_init(&g, &p);
     g.player.invulnerable = 0;
 
-    game_damage(&g, KOLO_ANIMAL_RABBIT, 1000);
+    game_damage(&g, AnimalType::RABBIT, 1000);
     assert(g.player.hp == 90);
     assert(g.player.invulnerable == KOLO_INVULNERABLE_FRAMES);
     assert(g.player.vx == -480 && g.player.vy == -300);
@@ -213,7 +213,7 @@ static void test_damage_lives_checkpoint(void)
     /* Rabbit and fox contact can never take the last hit point. */
     g.player.invulnerable = 0;
     g.player.hp = 20;
-    game_damage(&g, KOLO_ANIMAL_FOX, 0);
+    game_damage(&g, AnimalType::FOX, 0);
     assert(g.player.hp == 1 && g.player.lives == KOLO_DEFAULT_LIVES);
 
     /* A wolf can, and respawning keeps pickups and berries but drops the boost. */
@@ -224,7 +224,7 @@ static void test_damage_lives_checkpoint(void)
     g.blue_timer = 200;
     g.player.invulnerable = 0;
     g.player.hp = 30;
-    game_damage(&g, KOLO_ANIMAL_WOLF, 0);
+    game_damage(&g, AnimalType::WOLF, 0);
     assert(g.player.lives == 2 && g.player.hp == KOLO_FULL_HP);
     assert(g.player.x == g.checkpoint_x);
     assert(g.red_collected == 1 && g.pickup_taken[0] && g.blue_timer == 0);
@@ -232,7 +232,7 @@ static void test_damage_lives_checkpoint(void)
     g.player.invulnerable = 0;
     g.player.hp = 40;
     g.player.lives = 1;
-    game_damage(&g, KOLO_ANIMAL_BEAR, 0);
+    game_damage(&g, AnimalType::BEAR, 0);
     assert(g.game_over && g.player.lives == 0);
     assets_free(&p);
 }
