@@ -11,7 +11,6 @@
 
 #define ARCHIVE_PATH "KOLOBOK.DAT"
 #define FRAME_RATE 30
-#define ERROR_SIZE 96
 #define CODEWORD_MAX 8
 
 /* A stall longer than a fifth of a second means the process lost the CPU, so the
@@ -68,17 +67,17 @@ static void play_events(unsigned events)
     else if (events & Event::JUMP) speaker_play(440, 3);
 }
 
-static int load_stage(AssetPack *assets, unsigned stage, char *error, unsigned error_size)
+static int load_stage(AssetPack *assets, unsigned stage, Error &error)
 {
     return assets_load_bank(assets, ARCHIVE_PATH, bank_names[stage],
-                            level_names[stage], error, error_size);
+                            level_names[stage], error);
 }
 
 /* The title and intro use the garden map with the INTRO bank's palette. */
-static int load_title(AssetPack *assets, char *error, unsigned error_size)
+static int load_title(AssetPack *assets, Error &error)
 {
     return assets_load_bank(assets, ARCHIVE_PATH, "INTRO",
-                            level_names[Stage::GARDEN], error, error_size);
+                            level_names[Stage::GARDEN], error);
 }
 
 static int selftest_metadata(const AssetPack *assets)
@@ -562,14 +561,14 @@ static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
     return 1;
 }
 
-static int campaign_playtest(AssetPack *assets, char *error, unsigned error_size)
+static int campaign_playtest(AssetPack *assets, Error &error)
 {
     u8 hp = FULL_HP, lives = DEFAULT_LIVES;
     unsigned stage;
     int passed = 1;
     assets_free(assets);
     for (stage = 0; stage < Stage::COUNT && passed; ++stage) {
-        if (!load_stage(assets, stage, error, error_size)) return 0;
+        if (!load_stage(assets, stage, error)) return 0;
         passed = playtest_stage(assets, stage, &hp, &lives);
         assets_free(assets);
     }
@@ -616,7 +615,7 @@ typedef struct App {
     AssetPack assets;
     GameState game;
     unsigned stage;
-    char error[ERROR_SIZE];
+    Error error;
 } App;
 
 /* Each level owns the whole far-memory bank, so a stage change tears the video
@@ -626,7 +625,7 @@ static int enter_stage(App *app, unsigned stage, u8 hp, u8 lives)
     video_shutdown();
     assets_free(&app->assets);
     app->stage = stage;
-    if (!load_stage(&app->assets, stage, app->error, sizeof(app->error))) return 0;
+    if (!load_stage(&app->assets, stage, app->error)) return 0;
     if (!video_init(&app->assets)) return 0;
     game_init(&app->game, &app->assets, hp, lives);
     return 1;
@@ -637,7 +636,7 @@ static int enter_title(App *app)
     video_shutdown();
     assets_free(&app->assets);
     app->stage = Stage::GARDEN;
-    if (!load_title(&app->assets, app->error, sizeof(app->error))) return 0;
+    if (!load_title(&app->assets, app->error)) return 0;
     if (!video_init(&app->assets)) return 0;
     game_init(&app->game, &app->assets);
     music_play(Track::TITLE);
@@ -685,9 +684,8 @@ static int load_for_mode(App *app, Mode::Enum mode, const char *capture_kind)
     int wants_title = mode == Mode::PLAY || mode == Mode::SELFTEST ||
                       mode == Mode::PLAYTEST ||
                       (mode == Mode::CAPTURE && scene_is(capture_kind, "intro"));
-    if (wants_title) return load_title(&app->assets, app->error, sizeof(app->error));
-    return load_stage(&app->assets, stage_for_scene(mode, capture_kind),
-                      app->error, sizeof(app->error));
+    if (wants_title) return load_title(&app->assets, app->error);
+    return load_stage(&app->assets, stage_for_scene(mode, capture_kind), app->error);
 }
 
 typedef struct TitleMenu {
@@ -745,7 +743,7 @@ int main(int argc, char **argv)
     memset(&title, 0, sizeof(title));
     app.stage = Stage::GARDEN;
     if (!load_for_mode(&app, mode, capture_kind)) {
-        fprintf(stderr, "KOLOBOK: %s\n", app.error);
+        fprintf(stderr, "KOLOBOK: %s\n", app.error.message());
         return ExitCode::ASSETS;
     }
     if (mode == Mode::SELFTEST) {
@@ -754,7 +752,7 @@ int main(int argc, char **argv)
         return result ? ExitCode::OK : ExitCode::SELFTEST;
     }
     if (mode == Mode::PLAYTEST) {
-        result = campaign_playtest(&app.assets, app.error, sizeof(app.error));
+        result = campaign_playtest(&app.assets, app.error);
         if (app.assets.blob) assets_free(&app.assets);
         return result ? ExitCode::OK : ExitCode::PLAYTEST;
     }
@@ -927,6 +925,6 @@ int main(int argc, char **argv)
     video_shutdown();
     assets_free(&app.assets);
     if (!running) return ExitCode::OK;
-    fprintf(stderr, "KOLOBOK: %s\n", app.error);
+    fprintf(stderr, "KOLOBOK: %s\n", app.error.message());
     return ExitCode::RUNTIME;
 }

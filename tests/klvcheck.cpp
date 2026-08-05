@@ -11,8 +11,6 @@
 
 #include <stdio.h>
 
-#define ERROR_SIZE 96
-
 int main(int argc, char **argv)
 {
     int i;
@@ -22,9 +20,9 @@ int main(int argc, char **argv)
     }
     for (i = 1; i < argc; ++i) {
         LevelData level;
-        char error[ERROR_SIZE];
-        if (!level_load(&level, argv[i], error, sizeof(error))) {
-            printf("%s: %s\n", argv[i], error);
+        Error error;
+        if (!level_load(&level, argv[i], error)) {
+            printf("%s: %s\n", argv[i], error.message());
             return 1;
         }
         level_free(&level);

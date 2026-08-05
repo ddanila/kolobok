@@ -8,7 +8,6 @@
 #include <string.h>
 
 #define FILENAME_MAX_LEN 80
-#define ERROR_SIZE 96
 
 /* Which of the three overlaid documents the cursor edits. Tiles and objects are
  * painted with the tool; markers are placed by their own keys. */
@@ -27,7 +26,7 @@ typedef struct Editor {
     unsigned cursor_x, cursor_y, layer, tool;
     int dirty, valid, help, confirm_exit;
     char filename[FILENAME_MAX_LEN];
-    char error[ERROR_SIZE];
+    Error error;
 } Editor;
 
 static void handle_property_modal(Editor *editor)
@@ -68,8 +67,8 @@ static void open_property_modal(Editor *editor, unsigned kind, unsigned index)
 static int handle_exit_confirm(Editor *editor)
 {
     if (key_pressed(Key::ENTER)) {
-        if (level_save(&editor->assets.level, editor->filename,
-                       editor->error, sizeof(editor->error))) return 0;
+        if (level_save(&editor->assets.level, editor->filename, editor->error))
+            return 0;
         editor->confirm_exit = 0;
     } else if (key_pressed(Key::DELETE)) {
         return 0;
@@ -153,11 +152,10 @@ static void handle_editing(Editor *editor)
         if (find_object(level, editor->cursor_x, editor->cursor_y, &kind, &index))
             open_property_modal(editor, kind, index);
     }
-    if (key_pressed(Key::F2) &&
-        level_save(level, editor->filename, editor->error, sizeof(editor->error)))
+    if (key_pressed(Key::F2) && level_save(level, editor->filename, editor->error))
         editor->dirty = 0;
     if (key_pressed(Key::F3))
-        editor->valid = level_validate(level, editor->error, sizeof(editor->error));
+        editor->valid = level_validate(level, editor->error);
     if (key_pressed(Key::F4)) open_property_modal(editor, PropertyKind::LEVEL, 0);
 }
 
@@ -187,7 +185,7 @@ static int editor_selftest(void)
     LevelData level, check, backup;
     AnimalSpawn *animal;
     Encounter *encounter;
-    char error[ERROR_SIZE];
+    Error error;
     unsigned field;
     remove(path);
     remove("EDITTEST.TMP");
@@ -229,15 +227,15 @@ static int editor_selftest(void)
                     field == AnimalField::CLIMB_TOP ? -1 : 1;
         adjust_property(&level, PropertyKind::ANIMAL, 1, field, delta);
     }
-    if (!level_save(&level, path, error, sizeof(error))) {
-        printf("KOLOEDIT SELFTEST FAIL %s\n", error);
+    if (!level_save(&level, path, error)) {
+        printf("KOLOEDIT SELFTEST FAIL %s\n", error.message());
         level_free(&level);
         return 0;
     }
     level_free(&level);
 
-    if (!level_load(&check, path, error, sizeof(error))) {
-        printf("KOLOEDIT SELFTEST FAIL %s\n", error);
+    if (!level_load(&check, path, error)) {
+        printf("KOLOEDIT SELFTEST FAIL %s\n", error.message());
         return 0;
     }
     animal = &check.animals[1];
@@ -257,12 +255,12 @@ static int editor_selftest(void)
      * records behind, so round-trip an erase as well as an edit. */
     check.map[5 * BLANK_WIDTH + 10] = Tile::AIR;
     check.checkpoint_count = 0;
-    if (!level_save(&check, path, error, sizeof(error))) {
+    if (!level_save(&check, path, error)) {
         level_free(&check);
         return 0;
     }
     level_free(&check);
-    if (!level_load(&check, path, error, sizeof(error)) ||
+    if (!level_load(&check, path, error) ||
         check.map[5 * BLANK_WIDTH + 10] != Tile::AIR || check.checkpoint_count != 0) {
         level_free(&check);
         return 0;
@@ -281,27 +279,23 @@ static int prompt_for_filename(char *filename)
 
 /* Opening a name that does not exist yet creates a blank level on disk, so the
  * editor always has something valid to load and save over. */
-static int ensure_level_file(const char *filename, char *error, unsigned error_size)
+static bool ensure_level_file(const char *filename, Error &error)
 {
     LevelData level;
     FILE *probe = fopen(filename, "rb");
     if (probe) {
         fclose(probe);
-        if (!level_load(&level, filename, error, error_size)) return 0;
+        if (!level_load(&level, filename, error)) return false;
         level_free(&level);
-        return 1;
+        return true;
     }
-    if (!make_blank(&level)) {
-        strncpy(error, "out of memory", error_size - 1);
-        error[error_size - 1] = 0;
-        return 0;
-    }
-    if (!level_save(&level, filename, error, error_size)) {
+    if (!make_blank(&level)) return error.fail("out of memory");
+    if (!level_save(&level, filename, error)) {
         level_free(&level);
-        return 0;
+        return false;
     }
     level_free(&level);
-    return 1;
+    return true;
 }
 
 int main(int argc, char **argv)
@@ -319,13 +313,13 @@ int main(int argc, char **argv)
         fprintf(stderr, "KOLOEDIT: filename must use 8.3 form\n");
         return 2;
     }
-    if (!ensure_level_file(editor.filename, editor.error, sizeof(editor.error))) {
-        fprintf(stderr, "KOLOEDIT: %s\n", editor.error);
+    if (!ensure_level_file(editor.filename, editor.error)) {
+        fprintf(stderr, "KOLOEDIT: %s\n", editor.error.message());
         return 2;
     }
     if (!assets_load_bank(&editor.assets, "KOLOBOK.DAT", "GARDEN", editor.filename,
-                          editor.error, sizeof(editor.error))) {
-        fprintf(stderr, "KOLOEDIT: %s\n", editor.error);
+                          editor.error)) {
+        fprintf(stderr, "KOLOEDIT: %s\n", editor.error.message());
         return 2;
     }
     if (!video_init(&editor.assets) || !keyboard_install()) {

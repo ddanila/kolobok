@@ -85,6 +85,19 @@ struct AnimalField {
     };
 };
 
+/* Why a load, a save or a validation failed. Callers declare one, hand it to
+ * whatever may fail, and print message() if it does. fail() always returns
+ * false, so reporting a failure and returning it is a single statement. */
+class Error {
+public:
+    static const unsigned TEXT_SIZE = 96;
+    Error() { text[0] = 0; }
+    bool fail(const char *message);
+    const char *message() const { return text; }
+private:
+    char text[TEXT_SIZE];
+};
+
 /* Stored in the KLV as an absent tree, dialogue or other cross-reference. */
 #define NO_ID 0xffff
 
@@ -146,16 +159,15 @@ typedef struct AssetPack {
     LevelData level;
 } AssetPack;
 
-int assets_load_bank(AssetPack *pack, const char *archive_path,
-                     const char *bank_name, const char *level_path,
-                     char *error, unsigned error_size);
+bool assets_load_bank(AssetPack *pack, const char *archive_path,
+                      const char *bank_name, const char *level_path, Error &error);
 void assets_free(AssetPack *pack);
-int level_load(LevelData *level, const char *path, char *error, unsigned error_size);
-int level_save(const LevelData *level, const char *path, char *error, unsigned error_size);
+bool level_load(LevelData *level, const char *path, Error &error);
+bool level_save(const LevelData *level, const char *path, Error &error);
 void level_free(LevelData *level);
-int level_validate(const LevelData *level, char *error, unsigned error_size);
+bool level_validate(const LevelData *level, Error &error);
 u32 assets_crc32(ConstFarPtr data, u32 length);
-int assets_far_memory_active(const AssetPack *pack);
+bool assets_far_memory_active(const AssetPack *pack);
 unsigned assets_property_field_count(unsigned kind);
 
 #endif

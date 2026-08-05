@@ -13,8 +13,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define ERROR_SIZE 96
-
 #define TOOL_RED_BERRY 0
 #define TOOL_BIG_PIE 3
 #define TOOL_RABBIT TOOL_ANIMAL_FIRST
@@ -28,8 +26,8 @@
 
 static int valid(const LevelData *level)
 {
-    char error[ERROR_SIZE];
-    return level_validate(level, error, sizeof(error));
+    Error error;
+    return level_validate(level, error);
 }
 
 static const AnimalSpawn *animal_by_id(const LevelData *level, u16 id)

@@ -105,13 +105,11 @@ u32 assets_crc32(ConstFarPtr data, u32 length)
     return crc ^ 0xffffffffUL;
 }
 
-static int set_error(char *error, unsigned size, const char *message)
+bool Error::fail(const char *message)
 {
-    if (error != NULL && size) {
-        strncpy(error, message, size - 1);
-        error[size - 1] = 0;
-    }
-    return 0;
+    strncpy(text, message, TEXT_SIZE - 1);
+    text[TEXT_SIZE - 1] = 0;
+    return false;
 }
 
 static u16 far_read_u16_at(ConstFarPtr cursor)
@@ -124,12 +122,12 @@ static u32 far_read_u32(ConstFarPtr p)
     return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
 }
 
-static int far_equal(ConstFarPtr p, const char *text, unsigned length)
+static bool far_equal(ConstFarPtr p, const char *text, unsigned length)
 {
     unsigned i;
     for (i = 0; i < length; ++i)
-        if (p[i] != (u8)text[i]) return 0;
-    return 1;
+        if (p[i] != (u8)text[i]) return false;
+    return true;
 }
 
 unsigned assets_property_field_count(unsigned kind)
@@ -166,7 +164,7 @@ static u32 level_body_bytes(const LevelData *level)
            level_object_bytes(level);
 }
 
-static int level_counts_in_range(const LevelData *level)
+static bool level_counts_in_range(const LevelData *level)
 {
     return level->width >= KLV_MIN_WIDTH && level->width <= KLV_MAX_WIDTH &&
            level->height == LEVEL_HEIGHT &&
@@ -177,39 +175,39 @@ static int level_counts_in_range(const LevelData *level)
            level->encounter_count <= MAX_ENCOUNTERS;
 }
 
-static int validate_markers(const LevelData *level, char *error, unsigned error_size)
+static bool validate_markers(const LevelData *level, Error &error)
 {
     unsigned i;
     if (level->start.x >= level->width || level->start.y >= level->height ||
         level->exit.x >= level->width || level->exit.y >= level->height ||
         level->home.x >= level->width || level->home.y >= level->height)
-        return set_error(error, error_size, "level marker is outside map");
+        return error.fail("level marker is outside map");
     for (i = 0; i < level->checkpoint_count; ++i)
         if (level->checkpoints[i].x >= level->width ||
             level->checkpoints[i].y >= level->height)
-            return set_error(error, error_size, "checkpoint is outside map");
-    return 1;
+            return error.fail("checkpoint is outside map");
+    return true;
 }
 
-static int validate_pickups(const LevelData *level, char *error, unsigned error_size)
+static bool validate_pickups(const LevelData *level, Error &error)
 {
     unsigned i, j, red = 0;
     for (i = 0; i < level->pickup_count; ++i) {
         const Pickup *pickup = &level->pickups[i];
         if (pickup->type > PickupType::BIG_PIE ||
             pickup->x >= level->width || pickup->y >= level->height)
-            return set_error(error, error_size, "invalid pickup record");
+            return error.fail("invalid pickup record");
         if (pickup->type == PickupType::RED) ++red;
         for (j = 0; j < i; ++j)
             if (level->pickups[j].id == pickup->id)
-                return set_error(error, error_size, "duplicate pickup ID");
+                return error.fail("duplicate pickup ID");
     }
     if (red < level->required_red)
-        return set_error(error, error_size, "not enough red berries");
-    return 1;
+        return error.fail("not enough red berries");
+    return true;
 }
 
-static int validate_animals(const LevelData *level, char *error, unsigned error_size)
+static bool validate_animals(const LevelData *level, Error &error)
 {
     unsigned i, j;
     for (i = 0; i < level->animal_count; ++i) {
@@ -218,97 +216,96 @@ static int validate_animals(const LevelData *level, char *error, unsigned error_
             animal->x >= level->width || animal->y >= level->height ||
             animal->min_x > animal->x || animal->max_x < animal->x ||
             animal->max_x >= level->width)
-            return set_error(error, error_size, "invalid animal record");
+            return error.fail("invalid animal record");
         /* update_bear treats both climb rows as absolute tile rows and drives the
          * bear to them without clamping, so an out-of-range pair walks it off the
          * map. The editor clamps as you type; a hand-written level does not. */
         if (animal->climb_min > animal->climb_max ||
             animal->climb_max >= level->height)
-            return set_error(error, error_size, "invalid animal climb range");
+            return error.fail("invalid animal climb range");
         if (animal->dialogue_id != NO_ID && animal->dialogue_id > MAX_DIALOGUE_ID)
-            return set_error(error, error_size, "animal dialogue ID out of range");
+            return error.fail("animal dialogue ID out of range");
         for (j = 0; j < i; ++j)
             if (level->animals[j].id == animal->id)
-                return set_error(error, error_size, "duplicate animal ID");
+                return error.fail("duplicate animal ID");
     }
-    return 1;
+    return true;
 }
 
-static int validate_trees(const LevelData *level, char *error, unsigned error_size)
+static bool validate_trees(const LevelData *level, Error &error)
 {
     unsigned i, j;
     for (i = 0; i < level->tree_count; ++i) {
         const Tree *tree = &level->trees[i];
         if (tree->type > TreeType::OAK || tree->x >= level->width ||
             tree->y >= level->height || !tree->height)
-            return set_error(error, error_size, "invalid tree record");
+            return error.fail("invalid tree record");
         for (j = 0; j < i; ++j)
             if (level->trees[j].id == tree->id)
-                return set_error(error, error_size, "duplicate tree ID");
+                return error.fail("duplicate tree ID");
     }
-    return 1;
+    return true;
 }
 
-static int tree_exists(const LevelData *level, u16 tree_id)
+static bool tree_exists(const LevelData *level, u16 tree_id)
 {
     unsigned i;
     for (i = 0; i < level->tree_count; ++i)
-        if (level->trees[i].id == tree_id) return 1;
-    return 0;
+        if (level->trees[i].id == tree_id) return true;
+    return false;
 }
 
-static int animal_exists(const LevelData *level, u16 animal_id)
+static bool animal_exists(const LevelData *level, u16 animal_id)
 {
     unsigned i;
     for (i = 0; i < level->animal_count; ++i)
-        if (level->animals[i].id == animal_id) return 1;
-    return 0;
+        if (level->animals[i].id == animal_id) return true;
+    return false;
 }
 
-static int validate_cross_references(const LevelData *level, char *error,
-                                     unsigned error_size)
+static bool validate_cross_references(const LevelData *level, Error &error)
 {
     unsigned i, j, required = 0;
     for (i = 0; i < level->animal_count; ++i)
         if (level->animals[i].tree_id != NO_ID &&
             !tree_exists(level, level->animals[i].tree_id))
-            return set_error(error, error_size, "animal refers to missing tree");
+            return error.fail("animal refers to missing tree");
     for (i = 0; i < level->encounter_count; ++i) {
         const Encounter *encounter = &level->encounters[i];
         if (!animal_exists(level, encounter->animal_id))
-            return set_error(error, error_size, "encounter refers to missing animal");
+            return error.fail("encounter refers to missing animal");
         if (encounter->correct > 2 || encounter->reward > Reward::SMALL_PIE)
-            return set_error(error, error_size, "invalid encounter record");
+            return error.fail("invalid encounter record");
         for (j = 0; j < i; ++j)
             if (level->encounters[j].id == encounter->id)
-                return set_error(error, error_size, "duplicate encounter ID");
+                return error.fail("duplicate encounter ID");
         if (encounter->required) ++required;
     }
     /* Exactly one guardian: game_exit_ready gates the exit on the required
      * encounter, so zero makes the level unfinishable and two is ambiguous. */
     if (required != 1)
-        return set_error(error, error_size, "level needs exactly one guardian");
-    return 1;
+        return error.fail("level needs exactly one guardian");
+    return true;
 }
 
-int level_validate(const LevelData *level, char *error, unsigned error_size)
+bool level_validate(const LevelData *level, Error &error)
 {
     u32 i;
     if (level->width < KLV_MIN_WIDTH || level->width > KLV_MAX_WIDTH ||
         level->height != LEVEL_HEIGHT)
-        return set_error(error, error_size, "level must be 32..256 by 11 tiles");
+        return error.fail("level must be 32..256 by 11 tiles");
     if (level->theme >= Theme::COUNT || level->map == NULL)
-        return set_error(error, error_size, "invalid level theme or tile map");
+        return error.fail("invalid level theme or tile map");
     if (!level_counts_in_range(level))
-        return set_error(error, error_size, "level object limit exceeded");
-    if (!validate_markers(level, error, error_size)) return 0;
+        return error.fail("level object limit exceeded");
+    if (!validate_markers(level, error)) return false;
     for (i = 0; i < level_map_bytes(level); ++i)
         if (level->map[i] >= Tile::COUNT)
-            return set_error(error, error_size, "unknown tile in level");
-    if (!validate_pickups(level, error, error_size)) return 0;
-    if (!validate_animals(level, error, error_size)) return 0;
-    if (!validate_trees(level, error, error_size)) return 0;
-    return validate_cross_references(level, error, error_size);
+            return error.fail("unknown tile in level");
+    if (!validate_pickups(level, error)) return false;
+    if (!validate_animals(level, error)) return false;
+    if (!validate_trees(level, error)) return false;
+    return validate_cross_references(level, error);
 }
 
 static void read_pickup(const u8 **p, Pickup *pickup)
@@ -403,32 +400,31 @@ static void write_encounter(u8 **p, const Encounter *encounter)
     put_u16(p, encounter->retry_frames);
 }
 
-static u8 *read_level_file(const char *path, u32 *size, char *error,
-                           unsigned error_size)
+static u8 *read_level_file(const char *path, u32 *size, Error &error)
 {
     FILE *file = fopen(path, "rb");
     long measured;
     u8 *blob;
     if (!file) {
-        set_error(error, error_size, "cannot open KLV level");
+        error.fail("cannot open KLV level");
         return NULL;
     }
     if (fseek(file, 0, SEEK_END) || (measured = ftell(file)) < KLV_HEADER_SIZE ||
         measured > KLV_MAX_SIZE || fseek(file, 0, SEEK_SET)) {
         fclose(file);
-        set_error(error, error_size, "cannot measure KLV level");
+        error.fail("cannot measure KLV level");
         return NULL;
     }
     blob = (u8 *)malloc((unsigned)measured);
     if (!blob) {
         fclose(file);
-        set_error(error, error_size, "not enough memory for level");
+        error.fail("not enough memory for level");
         return NULL;
     }
     if (fread(blob, 1, (unsigned)measured, file) != (unsigned)measured) {
         fclose(file);
         free(blob);
-        set_error(error, error_size, "short read from KLV level");
+        error.fail("short read from KLV level");
         return NULL;
     }
     fclose(file);
@@ -436,8 +432,8 @@ static u8 *read_level_file(const char *path, u32 *size, char *error,
     return blob;
 }
 
-static int read_level_header(LevelData *level, const u8 *blob, u32 size,
-                            char *error, unsigned error_size)
+static bool read_level_header(LevelData *level, const u8 *blob, u32 size,
+                            Error &error)
 {
     const u8 *p = blob + 4;
     u16 version = read_u16(&p);
@@ -445,11 +441,11 @@ static int read_level_header(LevelData *level, const u8 *blob, u32 size,
     u32 crc = read_u32_at(p);
     p += 4;
     if (memcmp(blob, KLV_SIGNATURE, 4))
-        return set_error(error, error_size, "unsupported KLV signature");
+        return error.fail("unsupported KLV signature");
     if (version != KLV_VERSION || header_size != KLV_HEADER_SIZE)
-        return set_error(error, error_size, "unsupported KLV version");
+        return error.fail("unsupported KLV version");
     if (assets_crc32(blob + KLV_HEADER_SIZE, size - KLV_HEADER_SIZE) != crc)
-        return set_error(error, error_size, "KLV checksum mismatch");
+        return error.fail("KLV checksum mismatch");
     level->width = read_u16(&p);
     level->height = read_u16(&p);
     level->theme = *p++;
@@ -462,23 +458,23 @@ static int read_level_header(LevelData *level, const u8 *blob, u32 size,
     level->tree_count = read_u16(&p);
     level->encounter_count = read_u16(&p);
     if (!level_counts_in_range(level))
-        return set_error(error, error_size, "invalid KLV metadata");
-    return 1;
+        return error.fail("invalid KLV metadata");
+    return true;
 }
 
-int level_load(LevelData *level, const char *path, char *error, unsigned error_size)
+bool level_load(LevelData *level, const char *path, Error &error)
 {
     u8 *blob;
     const u8 *p, *end;
     u32 size, map_bytes;
     unsigned i;
     memset(level, 0, sizeof(*level));
-    blob = read_level_file(path, &size, error, error_size);
-    if (!blob) return 0;
-    if (!read_level_header(level, blob, size, error, error_size)) {
+    blob = read_level_file(path, &size, error);
+    if (!blob) return false;
+    if (!read_level_header(level, blob, size, error)) {
         free(blob);
         memset(level, 0, sizeof(*level));
-        return 0;
+        return false;
     }
     p = blob + KLV_HEADER_SIZE;
     end = blob + size;
@@ -486,12 +482,12 @@ int level_load(LevelData *level, const char *path, char *error, unsigned error_s
     if ((u32)(end - p) < level_body_bytes(level)) {
         free(blob);
         memset(level, 0, sizeof(*level));
-        return set_error(error, error_size, "truncated KLV payload");
+        return error.fail("truncated KLV payload");
     }
     level->map = (u8 *)malloc((unsigned)map_bytes);
     if (!level->map) {
         free(blob);
-        return set_error(error, error_size, "not enough memory for tile map");
+        return error.fail("not enough memory for tile map");
     }
     memcpy(level->map, p, (unsigned)map_bytes);
     p += map_bytes;
@@ -506,14 +502,14 @@ int level_load(LevelData *level, const char *path, char *error, unsigned error_s
     if (p != end) {
         free(blob);
         level_free(level);
-        return set_error(error, error_size, "unexpected KLV payload size");
+        return error.fail("unexpected KLV payload size");
     }
     free(blob);
-    if (!level_validate(level, error, error_size)) {
+    if (!level_validate(level, error)) {
         level_free(level);
-        return 0;
+        return false;
     }
-    return 1;
+    return true;
 }
 
 static u8 *build_level_body(const LevelData *level, u32 body_size)
@@ -568,8 +564,7 @@ static void with_extension(char *out, const char *path, const char *extension)
 
 /* Writes to a temporary file, reloads it to prove it parses, and only then swaps
  * it into place over a backup, so a failure never destroys the previous level. */
-int level_save(const LevelData *level, const char *path, char *error,
-               unsigned error_size)
+bool level_save(const LevelData *level, const char *path, Error &error)
 {
     char temp[PATH_MAX_LEN], backup[PATH_MAX_LEN];
     LevelData check;
@@ -577,12 +572,12 @@ int level_save(const LevelData *level, const char *path, char *error,
     u8 *body;
     u32 body_size, crc;
     int had_original;
-    if (!level_validate(level, error, error_size)) return 0;
+    if (!level_validate(level, error)) return false;
     if (strlen(path) + 5 >= sizeof(temp))
-        return set_error(error, error_size, "level filename is too long");
+        return error.fail("level filename is too long");
     body_size = level_body_bytes(level);
     body = build_level_body(level, body_size);
-    if (!body) return set_error(error, error_size, "not enough memory to save level");
+    if (!body) return error.fail("not enough memory to save level");
     crc = assets_crc32(body, body_size);
 
     with_extension(temp, path, ".TMP");
@@ -590,20 +585,20 @@ int level_save(const LevelData *level, const char *path, char *error,
     file = fopen(temp, "wb");
     if (!file) {
         free(body);
-        return set_error(error, error_size, "cannot create temporary level");
+        return error.fail("cannot create temporary level");
     }
     write_level_header(file, level, crc);
     if (fwrite(body, 1, (unsigned)body_size, file) != (unsigned)body_size ||
         fclose(file)) {
         free(body);
         remove(temp);
-        return set_error(error, error_size, "failed writing temporary level");
+        return error.fail("failed writing temporary level");
     }
     free(body);
 
-    if (!level_load(&check, temp, error, error_size)) {
+    if (!level_load(&check, temp, error)) {
         remove(temp);
-        return 0;
+        return false;
     }
     level_free(&check);
     remove(backup);
@@ -611,39 +606,39 @@ int level_save(const LevelData *level, const char *path, char *error,
     if (rename(temp, path)) {
         if (had_original) rename(backup, path);
         remove(temp);
-        return set_error(error, error_size, "cannot replace level file");
+        return error.fail("cannot replace level file");
     }
     if (had_original) remove(backup);
-    return 1;
+    return true;
 }
 
 /* Walks one sprite's run-length rows, checking every run stays inside both the
  * declared stream and a row of `row_width` pixels. Advances `cursor` past it. */
-static int check_span_rows(ConstFarPtr *cursor, ConstFarPtr span_end,
-                           unsigned row_width, char *error, unsigned error_size,
+static bool check_span_rows(ConstFarPtr *cursor, ConstFarPtr span_end,
+                           unsigned row_width, Error &error,
                            const char *what)
 {
     unsigned row;
     for (row = 0; row < SPRITE_ROWS; ++row) {
         unsigned run, run_count;
-        if (*cursor >= span_end) return set_error(error, error_size, what);
+        if (*cursor >= span_end) return error.fail(what);
         run_count = *(*cursor)++;
         for (run = 0; run < run_count; ++run) {
             unsigned start, length;
-            if ((u32)(span_end - *cursor) < 2) return set_error(error, error_size, what);
+            if ((u32)(span_end - *cursor) < 2) return error.fail(what);
             start = *(*cursor)++;
             length = *(*cursor)++;
             if (!length || start + length > row_width ||
                 (u32)(span_end - *cursor) < length)
-                return set_error(error, error_size, what);
+                return error.fail(what);
             *cursor += length;
         }
     }
-    return 1;
+    return true;
 }
 
-static int parse_bank_header(AssetPack *pack, ConstFarPtr *cursor,
-                             ConstFarPtr end, char *error, unsigned error_size)
+static bool parse_bank_header(AssetPack *pack, ConstFarPtr *cursor,
+                             ConstFarPtr end, Error &error)
 {
     ConstFarPtr p = *cursor;
     u16 version = far_read_u16_at(p);
@@ -662,10 +657,10 @@ static int parse_bank_header(AssetPack *pack, ConstFarPtr *cursor,
     if (version != BANK_VERSION || tile_w != TILE_SIZE || tile_h != TILE_SIZE ||
         pack->tile_count == 0 || pack->tile_count > BANK_MAX_TILES ||
         pack->sprite_count == 0 || pack->sprite_count > MAX_SPRITES)
-        return set_error(error, error_size, "unsupported resource bank metadata");
+        return error.fail("unsupported resource bank metadata");
     if ((u32)(end - p) < BANK_PALETTE_SIZE +
                          (u32)pack->tile_count * (TILE_PIXELS + 2UL) + 4UL)
-        return set_error(error, error_size, "truncated resource bank");
+        return error.fail("truncated resource bank");
     pack->palette = (FarPtr)p;
     p += BANK_PALETTE_SIZE;
     pack->tiles = (FarPtr)p;
@@ -675,88 +670,88 @@ static int parse_bank_header(AssetPack *pack, ConstFarPtr *cursor,
     pack->tile_material = (FarPtr)p;
     p += pack->tile_count;
     *cursor = p;
-    return 1;
+    return true;
 }
 
-static int parse_bank(AssetPack *pack, char *error, unsigned error_size)
+static bool parse_bank(AssetPack *pack, Error &error)
 {
     ConstFarPtr p, end, span_end;
     u16 span_size;
     unsigned i, variant;
     if (pack->blob_size < BANK_MIN_SIZE ||
         !far_equal(pack->blob, BANK_SIGNATURE, BANK_SIGNATURE_SIZE))
-        return set_error(error, error_size, "bad resource bank signature");
+        return error.fail("bad resource bank signature");
     if (assets_crc32(pack->blob, pack->blob_size - 4) !=
         far_read_u32(pack->blob + pack->blob_size - 4))
-        return set_error(error, error_size, "resource bank checksum mismatch");
+        return error.fail("resource bank checksum mismatch");
     p = pack->blob + BANK_SIGNATURE_SIZE;
     end = pack->blob + pack->blob_size - 4;
-    if (!parse_bank_header(pack, &p, end, error, error_size)) return 0;
+    if (!parse_bank_header(pack, &p, end, error)) return false;
 
     /* Unpacked spans, indexed by sprite. */
     span_size = far_read_u16_at(p);
     p += 2;
     if ((u32)(end - p) < (u32)span_size + 2UL)
-        return set_error(error, error_size, "truncated sprite spans");
+        return error.fail("truncated sprite spans");
     span_end = p + span_size;
     for (i = 0; i < pack->sprite_count; ++i) {
         pack->sprite_spans[i] = (FarPtr)p;
-        if (!check_span_rows(&p, span_end, TILE_SIZE, error, error_size,
-                             "invalid sprite span")) return 0;
+        if (!check_span_rows(&p, span_end, TILE_SIZE, error,
+                             "invalid sprite span")) return false;
     }
     if (p != span_end)
-        return set_error(error, error_size, "unexpected sprite span size");
+        return error.fail("unexpected sprite span size");
 
     /* Mode X spans, pre-shifted per sub-pixel alignment and plane, so a sprite can
      * be blitted one plane at a time without shifting at run time. */
     span_size = far_read_u16_at(p);
     p += 2;
     if ((u32)(end - p) != (u32)span_size)
-        return set_error(error, error_size, "unexpected planar span size");
+        return error.fail("unexpected planar span size");
     span_end = p + span_size;
     for (i = 0; i < pack->sprite_count; ++i)
         for (variant = 0; variant < SPRITE_PLANE_VARIANTS; ++variant) {
             pack->sprite_planar_spans[i][variant] = (FarPtr)p;
-            if (!check_span_rows(&p, span_end, PLANAR_ROW_WIDTH, error, error_size,
-                                 "invalid planar span")) return 0;
+            if (!check_span_rows(&p, span_end, PLANAR_ROW_WIDTH, error,
+                                 "invalid planar span")) return false;
         }
-    return p == span_end ? 1
-                         : set_error(error, error_size, "unexpected planar span data");
+    return p == span_end ? true
+                         : error.fail("unexpected planar span data");
 }
 
 /* The bank lives above the 64 KiB small-model data segment, so on the DOS target
  * it is staged through a near buffer into a far allocation. */
-static int read_bank_blob(AssetPack *pack, FILE *file, u32 size,
-                          char *error, unsigned error_size)
+static bool read_bank_blob(AssetPack *pack, FILE *file, u32 size,
+                          Error &error)
 {
 #ifdef __WATCOMC__
     u8 buffer[1024];
     u32 done = 0;
     unsigned chunk, segment;
     if (_dos_allocmem((unsigned)((size + 15UL) >> 4), &segment) != 0)
-        return set_error(error, error_size, "not enough far memory for resource bank");
+        return error.fail("not enough far memory for resource bank");
     pack->bank_segment = (u16)segment;
     pack->blob = (FarPtr)MK_FP(pack->bank_segment, 0);
     while (done < size) {
         chunk = (unsigned)(size - done > sizeof(buffer) ? sizeof(buffer) : size - done);
         if (fread(buffer, 1, chunk, file) != chunk)
-            return set_error(error, error_size, "short read from resource bank");
+            return error.fail("short read from resource bank");
         _fmemcpy(pack->blob + done, buffer, chunk);
         done += chunk;
     }
 #else
     pack->blob = (u8 *)malloc((unsigned)size);
     if (!pack->blob)
-        return set_error(error, error_size, "not enough memory for resource bank");
+        return error.fail("not enough memory for resource bank");
     if (fread(pack->blob, 1, (unsigned)size, file) != (unsigned)size)
-        return set_error(error, error_size, "short read from resource bank");
+        return error.fail("short read from resource bank");
 #endif
     pack->blob_size = size;
-    return 1;
+    return true;
 }
 
-static int find_bank(FILE *file, const char *bank_name, u32 *offset, u32 *size,
-                     char *error, unsigned error_size)
+static bool find_bank(FILE *file, const char *bank_name, u32 *offset, u32 *size,
+                     Error &error)
 {
     u8 header[DAT_HEADER_SIZE], entry[DAT_ENTRY_SIZE];
     char wanted[DAT_NAME_SIZE + 1];
@@ -766,58 +761,58 @@ static int find_bank(FILE *file, const char *bank_name, u32 *offset, u32 *size,
     *offset = *size = 0;
     if (fread(header, 1, sizeof(header), file) != sizeof(header) ||
         memcmp(header, DAT_SIGNATURE, DAT_NAME_SIZE))
-        return set_error(error, error_size, "unsupported KOLOBOK.DAT format");
+        return error.fail("unsupported KOLOBOK.DAT format");
     if ((header[8] | ((u16)header[9] << 8)) != DAT_VERSION)
-        return set_error(error, error_size, "unsupported archive version");
+        return error.fail("unsupported archive version");
     count = (u16)(header[10] | ((u16)header[11] << 8));
     if (!count || count > DAT_MAX_BANKS)
-        return set_error(error, error_size, "invalid archive bank count");
+        return error.fail("invalid archive bank count");
     for (i = 0; i < count; ++i) {
         if (fread(entry, 1, sizeof(entry), file) != sizeof(entry))
-            return set_error(error, error_size, "truncated archive index");
+            return error.fail("truncated archive index");
         if (!strncmp((char *)entry, wanted, DAT_NAME_SIZE)) {
             *offset = read_u32_at(entry + 8);
             *size = read_u32_at(entry + 12);
         }
     }
     if (!*offset || *size < BANK_MIN_SIZE || *size >= BANK_MAX_SIZE)
-        return set_error(error, error_size, "resource bank missing or too large");
-    return 1;
+        return error.fail("resource bank missing or too large");
+    return true;
 }
 
-int assets_load_bank(AssetPack *pack, const char *archive_path, const char *bank_name,
-                     const char *level_path, char *error, unsigned error_size)
+bool assets_load_bank(AssetPack *pack, const char *archive_path, const char *bank_name,
+                     const char *level_path, Error &error)
 {
     FILE *file;
     u32 offset, size;
     memset(pack, 0, sizeof(*pack));
-    if (level_path && !level_load(&pack->level, level_path, error, error_size)) return 0;
+    if (level_path && !level_load(&pack->level, level_path, error)) return false;
     file = fopen(archive_path, "rb");
     if (!file) {
         assets_free(pack);
-        return set_error(error, error_size, "cannot open KOLOBOK.DAT");
+        return error.fail("cannot open KOLOBOK.DAT");
     }
-    if (!find_bank(file, bank_name, &offset, &size, error, error_size)) {
+    if (!find_bank(file, bank_name, &offset, &size, error)) {
         fclose(file);
         assets_free(pack);
-        return 0;
+        return false;
     }
     if (fseek(file, (long)offset, SEEK_SET)) {
         fclose(file);
         assets_free(pack);
-        return set_error(error, error_size, "cannot seek resource bank");
+        return error.fail("cannot seek resource bank");
     }
-    if (!read_bank_blob(pack, file, size, error, error_size)) {
+    if (!read_bank_blob(pack, file, size, error)) {
         fclose(file);
         assets_free(pack);
-        return 0;
+        return false;
     }
     fclose(file);
-    if (!parse_bank(pack, error, error_size)) {
+    if (!parse_bank(pack, error)) {
         assets_free(pack);
-        return 0;
+        return false;
     }
-    return 1;
+    return true;
 }
 
 void assets_free(AssetPack *pack)
@@ -831,7 +826,7 @@ void assets_free(AssetPack *pack)
     memset(pack, 0, sizeof(*pack));
 }
 
-int assets_far_memory_active(const AssetPack *pack)
+bool assets_far_memory_active(const AssetPack *pack)
 {
 #ifdef __WATCOMC__
     return pack->blob != 0 && pack->bank_segment != 0 && FP_OFF(pack->blob) == 0;

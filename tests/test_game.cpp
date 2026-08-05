@@ -11,8 +11,6 @@
 #define DEEP_LEVEL "build/DFOREST.KLV"
 
 #define GROUND_ROW 9
-#define ERROR_SIZE 96
-
 /* Per-frame acceleration each surface grants, as chosen by grip_for in game.c. */
 #define GRASS_ACCEL 32
 #define SAND_ACCEL 24
@@ -32,8 +30,8 @@ static s32 to_fp(int value) { return (s32)value << FP_SHIFT; }
 
 static void load(AssetPack *pack, const char *bank, const char *level)
 {
-    char error[ERROR_SIZE];
-    assert(assets_load_bank(pack, ARCHIVE, bank, level, error, sizeof(error)));
+    Error error;
+    assert(assets_load_bank(pack, ARCHIVE, bank, level, error));
 }
 
 static void step(GameState *game, unsigned count)
@@ -97,7 +95,7 @@ static void test_crc_rejection(void)
     FILE *source = fopen(GARDEN_LEVEL, "rb");
     FILE *target = fopen(corrupt, "wb");
     AssetPack p;
-    char error[ERROR_SIZE];
+    Error error;
     long offset = 0;
     int byte;
     assert(source && target);
@@ -107,8 +105,8 @@ static void test_crc_rejection(void)
     }
     fclose(source);
     fclose(target);
-    assert(!assets_load_bank(&p, ARCHIVE, "GARDEN", corrupt, error, sizeof(error)));
-    assert(strstr(error, "checksum") != 0);
+    assert(!assets_load_bank(&p, ARCHIVE, "GARDEN", corrupt, error));
+    assert(strstr(error.message(), "checksum") != 0);
     remove(corrupt);
 }
 
@@ -118,33 +116,33 @@ static void test_crc_rejection(void)
 static void test_level_validation(void)
 {
     LevelData level;
-    char error[ERROR_SIZE];
+    Error error;
     u16 saved;
-    assert(level_load(&level, DEEP_LEVEL, error, sizeof(error)));
-    assert(level_validate(&level, error, sizeof(error)));
+    assert(level_load(&level, DEEP_LEVEL, error));
+    assert(level_validate(&level, error));
 
     /* A climb range past the last row sends update_bear off the bottom of the
      * map; an inverted one makes the bear climb and descend past each other. */
     saved = level.animals[DEEP_BEAR].climb_max;
     level.animals[DEEP_BEAR].climb_max = LEVEL_HEIGHT;
-    assert(!level_validate(&level, error, sizeof(error)));
-    assert(strstr(error, "climb") != 0);
+    assert(!level_validate(&level, error));
+    assert(strstr(error.message(), "climb") != 0);
     level.animals[DEEP_BEAR].climb_min = LEVEL_HEIGHT - 1;
     level.animals[DEEP_BEAR].climb_max = 0;
-    assert(!level_validate(&level, error, sizeof(error)));
-    assert(strstr(error, "climb") != 0);
+    assert(!level_validate(&level, error));
+    assert(strstr(error.message(), "climb") != 0);
     level.animals[DEEP_BEAR].climb_min = 0;
     level.animals[DEEP_BEAR].climb_max = saved;
-    assert(level_validate(&level, error, sizeof(error)));
+    assert(level_validate(&level, error));
 
     /* NO_ID means "no dialogue" and stays legal; anything else has to survive
      * the narrowing to the encounter's one-byte dialogue ID. */
     saved = level.animals[0].dialogue_id;
     level.animals[0].dialogue_id = MAX_DIALOGUE_ID + 1;
-    assert(!level_validate(&level, error, sizeof(error)));
-    assert(strstr(error, "dialogue") != 0);
+    assert(!level_validate(&level, error));
+    assert(strstr(error.message(), "dialogue") != 0);
     level.animals[0].dialogue_id = NO_ID;
-    assert(level_validate(&level, error, sizeof(error)));
+    assert(level_validate(&level, error));
     level.animals[0].dialogue_id = saved;
 
     level_free(&level);
