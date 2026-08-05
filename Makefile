@@ -1,4 +1,4 @@
-.PHONY: all assets levels toolchain dos host-test perf-test playtest test run screenshot dist clean
+.PHONY: all assets levels toolchain dos dos-debug host-test perf-test playtest test run screenshot dist clean
 
 PYTHON ?= python3
 HOST_CC ?= gcc
@@ -27,8 +27,13 @@ toolchain:
 dos: toolchain assets
 	bash tools/build.sh
 
-build/test_game: tests/test_game.c src/game.c src/game.h src/assets.c src/assets.h build/KOLOBOK.DAT build/GARDEN.KLV
-	$(HOST_CC) -std=c99 -Wall -Wextra -Werror -Isrc tests/test_game.c src/game.c src/assets.c -o $@
+# Same binaries with the ring-buffer trace compiled in. Overwrites
+# build/KOLOBOK.EXE, so run `make dos` again before measuring or shipping.
+dos-debug: toolchain assets
+	KOLO_TRACE=1 bash tools/build.sh
+
+build/test_game: tests/test_game.c src/game.c src/game.h src/assets.c src/assets.h src/trace.c src/trace.h build/KOLOBOK.DAT build/GARDEN.KLV
+	$(HOST_CC) -std=c99 -Wall -Wextra -Werror -Isrc tests/test_game.c src/game.c src/assets.c src/trace.c -o $@
 
 build/test_music: tests/test_music.c src/music.c src/music.h src/assets.h
 	$(HOST_CC) -std=c99 -Wall -Wextra -Werror -Isrc tests/test_music.c src/music.c -o $@

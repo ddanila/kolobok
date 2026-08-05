@@ -7,23 +7,32 @@ export WATCOM="$watcom_root"
 export INCLUDE="$watcom_root/h"
 export PATH="$watcom_root/$watcom_bindir:$PATH"
 
+# KOLO_TRACE=1 builds the ring-buffer diagnostics into both executables. The
+# shipping build must stay free of them, so this is opt-in and never default.
+trace_define=()
+if [[ "${KOLO_TRACE:-0}" != "0" ]]; then
+    trace_define=(-dKOLO_TRACE)
+    echo "DOS build: tracing enabled (KOLO_TRACE)"
+fi
+
 mkdir -p "$project_root/build"
 rm -f "$project_root/build/KOLOBOK.EXE" "$project_root/build/KOLOEDIT.EXE" "$project_root/build/WATCOM.LOG"
 pushd "$project_root/build" >/dev/null
-if ! wcl -q -bt=dos -ms -3 -ox -s -k8192 -i="$project_root/src" \
+if ! wcl -q -bt=dos -ms -3 -ox -s -k8192 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOBOK.EXE \
     "$project_root/src/main.c" "$project_root/src/game.c" \
     "$project_root/src/assets.c" "$project_root/src/platform.c" \
-    "$project_root/src/video.c" "$project_root/src/music.c" >WATCOM.LOG 2>&1; then
+    "$project_root/src/video.c" "$project_root/src/music.c" \
+    "$project_root/src/trace.c" >WATCOM.LOG 2>&1; then
     popd >/dev/null
     sed -n '1,200p' "$project_root/build/WATCOM.LOG" >&2
     exit 1
 fi
-if ! wcl -q -bt=dos -ms -3 -ox -s -k16384 -i="$project_root/src" \
+if ! wcl -q -bt=dos -ms -3 -ox -s -k16384 -i="$project_root/src" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOEDIT.EXE \
     "$project_root/src/editor.c" "$project_root/src/game.c" \
     "$project_root/src/assets.c" "$project_root/src/platform.c" \
-    "$project_root/src/video.c" >WATCOM-EDITOR.LOG 2>&1; then
+    "$project_root/src/video.c" "$project_root/src/trace.c" >WATCOM-EDITOR.LOG 2>&1; then
     popd >/dev/null
     sed -n '1,200p' "$project_root/build/WATCOM-EDITOR.LOG" >&2
     exit 1

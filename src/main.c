@@ -2,6 +2,7 @@
 #include "game.h"
 #include "music.h"
 #include "platform.h"
+#include "trace.h"
 #include "video.h"
 
 #include <stdio.h>
@@ -117,9 +118,15 @@ static int campaign_playtest(AssetPack*assets,char*error,unsigned error_size)
     for(stage=0;stage<3&&passed;++stage){
         if(!load_stage(assets,stage,error,error_size))return 0;game_init_carry(&game,assets,hp,lives);
         memset(abandoned,0,sizeof(abandoned));stall=0;last_target=0xffff;
+        kolo_trace_reset();
+        KOLO_LOG(("stage %u start w=%u need=%u hp=%u lv=%u",stage,(unsigned)assets->map_w,
+                  (unsigned)assets->level.required_red,(unsigned)hp,(unsigned)lives));
         for(frame=0;frame<(unsigned)assets->map_w*75U&&!game.won&&!game.game_over;++frame){
             int player_x=(int)(game.player.x>>KOLO_FP_SHIFT),player_y=(int)(game.player.y>>KOLO_FP_SHIFT),danger=0,talk_near=0,target_x=(int)assets->level.exit.x*16,direction=1,target_is_pickup=0;unsigned target_index=0xffff;memset(&input,0,sizeof(input));
-            if(game.active_dialogue){unsigned encounter=(unsigned)game.active_encounter;game_answer_dialogue(&game,assets->level.encounters[encounter].correct);continue;}
+            if(game.active_dialogue){unsigned encounter=(unsigned)game.active_encounter;
+                KOLO_LOG(("f=%u talk enc=%u answer=%u",frame,encounter,
+                          (unsigned)assets->level.encounters[encounter].correct));
+                game_answer_dialogue(&game,assets->level.encounters[encounter].correct);continue;}
             {unsigned best=0xffff;for(i=0;i<assets->level.pickup_count;++i)if(!game.pickup_taken[i]&&!abandoned[i]&&assets->level.pickups[i].y==8){int candidate=(int)assets->level.pickups[i].x*16+4;unsigned distance=(unsigned)(candidate>player_x?candidate-player_x:player_x-candidate);if(distance<best){best=distance;target_x=candidate;target_is_pickup=1;target_index=i;}}}
             /* Walking to the exit is pointless while a required encounter is
              * unsolved, because game_exit_ready refuses to finish and the bot
@@ -164,11 +171,21 @@ static int campaign_playtest(AssetPack*assets,char*error,unsigned error_size)
              * budget runs out and report that instead. */
             if(target_is_pickup&&target_index==last_target&&
                assets->level.pickups[target_index].type!=KOLO_PICKUP_RED){
-                if(++stall>=400){abandoned[target_index]=1;stall=0;}}
+                if(++stall>=400){abandoned[target_index]=1;stall=0;
+                    KOLO_LOG(("f=%u give up %u at=(%u,%u)",frame,target_index,
+                              (unsigned)assets->level.pickups[target_index].x,
+                              (unsigned)assets->level.pickups[target_index].y));}}
             else{last_target=target_is_pickup?target_index:0xffff;stall=0;}
+            /* One heartbeat a second. The ring holds a minute of history, which
+             * is what distinguishes "wandered off" from "wedged in one spot". */
+            if(frame%30U==0U)
+                KOLO_LOG(("f=%u x=%d y=%d g=%u to=%d red=%u hp=%u",frame,player_x,player_y,
+                          (unsigned)game.player.on_ground,target_x,
+                          (unsigned)game.red_collected,(unsigned)game.player.hp));
         }
         if(!game.won||game.game_over||game.red_collected<assets->level.required_red||!game.guardian_solved){
             printf("KOLOBOK PLAYTEST FAIL stage=%u frame=%u x=%d y=%d vx=%ld vy=%ld ground=%u red=%u guardian=%u hp=%u lives=%u\n",stage,frame,(int)(game.player.x>>KOLO_FP_SHIFT),(int)(game.player.y>>KOLO_FP_SHIFT),game.player.vx,game.player.vy,game.player.on_ground,game.red_collected,game.guardian_solved,game.player.hp,game.player.lives);passed=0;
+            kolo_trace_dump("playtest stage failed");
         }else{hp=game.player.hp;lives=game.player.lives;printf("KOLOBOK PLAYTEST LEVEL %u PASS frames=%u hp=%u lives=%u\n",stage+1,frame,hp,lives);}
         assets_free(assets);
     }

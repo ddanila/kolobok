@@ -1,4 +1,5 @@
 #include "game.h"
+#include "trace.h"
 
 #include <string.h>
 #include <ctype.h>
@@ -53,6 +54,8 @@ void game_respawn(GameState *game)
 
 void game_lose_life(GameState *game)
 {
+    KOLO_LOG(("death x=%d y=%d lv=%u",px(game->player.x),px(game->player.y),
+              (unsigned)game->player.lives));
     if(game->player.lives)--game->player.lives;
     game->blue_timer=0;event_add(game,KOLO_EVENT_DEATH);
     if(!game->player.lives){game->game_over=1;event_add(game,KOLO_EVENT_GAME_OVER);return;}
