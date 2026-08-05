@@ -88,6 +88,10 @@ struct AnimalField {
 /* Stored in the KLV as an absent tree, dialogue or other cross-reference. */
 #define NO_ID 0xffff
 
+/* An encounter stores its dialogue ID in a single byte, so an animal that names
+ * a larger one cannot round-trip into the encounter that answers for it. */
+#define MAX_DIALOGUE_ID 255
+
 typedef struct Point { u16 x, y; } Point;
 
 typedef struct Pickup {

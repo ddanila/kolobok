@@ -219,6 +219,14 @@ static int validate_animals(const LevelData *level, char *error, unsigned error_
             animal->min_x > animal->x || animal->max_x < animal->x ||
             animal->max_x >= level->width)
             return set_error(error, error_size, "invalid animal record");
+        /* update_bear treats both climb rows as absolute tile rows and drives the
+         * bear to them without clamping, so an out-of-range pair walks it off the
+         * map. The editor clamps as you type; a hand-written level does not. */
+        if (animal->climb_min > animal->climb_max ||
+            animal->climb_max >= level->height)
+            return set_error(error, error_size, "invalid animal climb range");
+        if (animal->dialogue_id != NO_ID && animal->dialogue_id > MAX_DIALOGUE_ID)
+            return set_error(error, error_size, "animal dialogue ID out of range");
         for (j = 0; j < i; ++j)
             if (level->animals[j].id == animal->id)
                 return set_error(error, error_size, "duplicate animal ID");

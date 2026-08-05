@@ -36,7 +36,7 @@ dos: toolchain assets
 dos-debug: toolchain assets
 	KOLO_TRACE=1 bash tools/build.sh
 
-build/test_game: tests/test_game.cpp src/game.cpp src/game.h src/assets.cpp src/assets.h src/trace.cpp src/trace.h build/KOLOBOK.DAT build/GARDEN.KLV
+build/test_game: tests/test_game.cpp src/game.cpp src/game.h src/assets.cpp src/assets.h src/trace.cpp src/trace.h build/KOLOBOK.DAT levels
 	$(HOST_CXX) $(HOST_CXXFLAGS) -Isrc tests/test_game.cpp src/game.cpp src/assets.cpp src/trace.cpp -o $@
 
 build/test_music: tests/test_music.cpp src/music.cpp src/music.h src/assets.h

@@ -112,6 +112,44 @@ static void test_crc_rejection(void)
     remove(corrupt);
 }
 
+/* level_validate is the only gate a hand-written or tool-generated level passes
+ * through before the runtime trusts it, so every field the runtime dereferences
+ * or drives an entity to must be rejected here when it is out of range. */
+static void test_level_validation(void)
+{
+    LevelData level;
+    char error[ERROR_SIZE];
+    u16 saved;
+    assert(level_load(&level, DEEP_LEVEL, error, sizeof(error)));
+    assert(level_validate(&level, error, sizeof(error)));
+
+    /* A climb range past the last row sends update_bear off the bottom of the
+     * map; an inverted one makes the bear climb and descend past each other. */
+    saved = level.animals[DEEP_BEAR].climb_max;
+    level.animals[DEEP_BEAR].climb_max = LEVEL_HEIGHT;
+    assert(!level_validate(&level, error, sizeof(error)));
+    assert(strstr(error, "climb") != 0);
+    level.animals[DEEP_BEAR].climb_min = LEVEL_HEIGHT - 1;
+    level.animals[DEEP_BEAR].climb_max = 0;
+    assert(!level_validate(&level, error, sizeof(error)));
+    assert(strstr(error, "climb") != 0);
+    level.animals[DEEP_BEAR].climb_min = 0;
+    level.animals[DEEP_BEAR].climb_max = saved;
+    assert(level_validate(&level, error, sizeof(error)));
+
+    /* NO_ID means "no dialogue" and stays legal; anything else has to survive
+     * the narrowing to the encounter's one-byte dialogue ID. */
+    saved = level.animals[0].dialogue_id;
+    level.animals[0].dialogue_id = MAX_DIALOGUE_ID + 1;
+    assert(!level_validate(&level, error, sizeof(error)));
+    assert(strstr(error, "dialogue") != 0);
+    level.animals[0].dialogue_id = NO_ID;
+    assert(level_validate(&level, error, sizeof(error)));
+    level.animals[0].dialogue_id = saved;
+
+    level_free(&level);
+}
+
 static void test_surface_physics(void)
 {
     AssetPack p;
@@ -455,6 +493,7 @@ int main(void)
 {
     test_assets_and_levels();
     test_crc_rejection();
+    test_level_validation();
     test_surface_physics();
     test_boost_and_pies();
     test_damage_lives_checkpoint();
