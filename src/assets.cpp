@@ -61,12 +61,7 @@ public:
     bool ok() const { return handle != NULL; }
     FILE *get() { return handle; }
     /* For a write the flush can fail, so closing early is a checked step. */
-    bool close()
-    {
-        FILE *closing = handle;
-        handle = NULL;
-        return fclose(closing) == 0;
-    }
+    bool close() { FILE *closing = handle; handle = NULL; return fclose(closing) == 0; }
 private:
     FILE *handle;
     File(const File &);
@@ -79,13 +74,8 @@ public:
     ~Bytes() { if (p != NULL) free(p); }
     bool alloc(u32 size) { p = (u8 *)malloc((unsigned)size); return p != NULL; }
     u8 *get() { return p; }
-    /* Hands the block to a caller that will own it from here on. */
-    u8 *release()
-    {
-        u8 *owned = p;
-        p = NULL;
-        return owned;
-    }
+    /* Hands the block to a caller that owns it from here on. */
+    u8 *release() { u8 *owned = p; p = NULL; return owned; }
 private:
     u8 *p;
     Bytes(const Bytes &);
@@ -105,49 +95,49 @@ private:
     PackGuard &operator=(const PackGuard &);
 };
 
-static u16 read_u16(const u8 **cursor)
-{
-    u16 value = (u16)((*cursor)[0] | ((u16)(*cursor)[1] << 8));
-    *cursor += 2;
-    return value;
-}
+/* Cursors over a little-endian byte stream. Every field is consumed or emitted
+ * in stream order, so the record readers and writers below are mirror images of
+ * each other and a record's layout is stated once per direction. */
+/* field() is what makes one description of a record serve both directions: the
+ * reader's overloads take a mutable field and fill it, the writer's take a const
+ * one and emit it, so each visit() below is the layout stated exactly once. */
+class Reader {
+public:
+    Reader(const u8 *start) : p(start) { }
+    const u8 *at() const { return p; }
+    void skip(unsigned count) { p += count; }
+    u8 byte() { return *p++; }
+    u16 word() { u16 v = (u16)(p[0] | ((u16)p[1] << 8)); p += 2; return v; }
+    u32 dword() { u32 low = word(); return low | ((u32)word() << 16); }
+    void field(u8 &value) { value = byte(); }
+    void field(u16 &value) { value = word(); }
+    void field(u32 &value) { value = dword(); }
+    void field(Point &value) { value.x = word(); value.y = word(); }
+    /* A tree's row and height share one 16-bit field, low byte first. */
+    void packed(u16 &low, u8 &high) { u16 v = word(); low = (u8)v; high = (u8)(v >> 8); }
+private:
+    const u8 *p;
+};
 
-static u32 read_u32_at(const u8 *p)
-{
-    return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
-}
-
-static void read_point(const u8 **cursor, Point *point)
-{
-    point->x = read_u16(cursor);
-    point->y = read_u16(cursor);
-}
-
-static void write_u16(FILE *file, u16 value)
-{
-    fputc(value & 255, file);
-    fputc(value >> 8, file);
-}
-
-static void write_u32(FILE *file, u32 value)
-{
-    fputc((int)(value & 255), file);
-    fputc((int)((value >> 8) & 255), file);
-    fputc((int)((value >> 16) & 255), file);
-    fputc((int)((value >> 24) & 255), file);
-}
-
-static void put_u16(u8 **p, u16 value)
-{
-    *(*p)++ = (u8)value;
-    *(*p)++ = (u8)(value >> 8);
-}
-
-static void put_point(u8 **p, Point point)
-{
-    put_u16(p, point.x);
-    put_u16(p, point.y);
-}
+class Writer {
+public:
+    Writer(u8 *start) : p(start) { }
+    void byte(u8 value) { *p++ = value; }
+    void word(u16 value) { *p++ = (u8)value; *p++ = (u8)(value >> 8); }
+    void dword(u32 value) { word((u16)value); word((u16)(value >> 16)); }
+    void field(const u8 &value) { byte(value); }
+    void field(const u16 &value) { word(value); }
+    void field(const u32 &value) { dword(value); }
+    void field(const Point &value) { word(value.x); word(value.y); }
+    void packed(const u16 &low, const u8 &high) { word((u16)(low | ((u16)high << 8))); }
+    void bytes(const void *source, unsigned count)
+    {
+        memcpy(p, source, count);
+        p += count;
+    }
+private:
+    u8 *p;
+};
 
 u32 assets_crc32(ConstFarPtr data, u32 length)
 {
@@ -364,96 +354,65 @@ bool level_validate(const LevelData *level, Error &error)
     return validate_cross_references(level, error);
 }
 
-static void read_pickup(const u8 **p, Pickup *pickup)
+/* The KLV record layouts. Each is stated once and serves both directions: pass a
+ * Reader and a record to fill it, a Writer and a const record to emit it. A field
+ * cannot be added to one direction and forgotten in the other. */
+template <class S, class R> static void visit_pickup(S &s, R &pickup)
 {
-    pickup->type = *(*p)++;
-    pickup->flags = *(*p)++;
-    pickup->id = read_u16(p);
-    pickup->x = read_u16(p);
-    pickup->y = read_u16(p);
+    s.field(pickup.type);
+    s.field(pickup.flags);
+    s.field(pickup.id);
+    s.field(pickup.x);
+    s.field(pickup.y);
 }
 
-static void read_animal(const u8 **p, AnimalSpawn *animal)
+template <class S, class R> static void visit_animal(S &s, R &animal)
 {
-    animal->type = *(*p)++;
-    animal->flags = *(*p)++;
-    animal->id = read_u16(p);
-    animal->x = read_u16(p);
-    animal->y = read_u16(p);
-    animal->min_x = read_u16(p);
-    animal->max_x = read_u16(p);
-    animal->tree_id = read_u16(p);
-    animal->climb_min = read_u16(p);
-    animal->climb_max = read_u16(p);
-    animal->dialogue_id = read_u16(p);
+    s.field(animal.type);
+    s.field(animal.flags);
+    s.field(animal.id);
+    s.field(animal.x);
+    s.field(animal.y);
+    s.field(animal.min_x);
+    s.field(animal.max_x);
+    s.field(animal.tree_id);
+    s.field(animal.climb_min);
+    s.field(animal.climb_max);
+    s.field(animal.dialogue_id);
 }
 
-/* A tree's row and height share one 16-bit field, low byte first. */
-static void read_tree(const u8 **p, Tree *tree)
+template <class S, class R> static void visit_tree(S &s, R &tree)
 {
-    u16 row_and_height;
-    tree->type = *(*p)++;
-    tree->flags = *(*p)++;
-    tree->id = read_u16(p);
-    tree->x = read_u16(p);
-    row_and_height = read_u16(p);
-    tree->y = (u8)row_and_height;
-    tree->height = (u8)(row_and_height >> 8);
+    s.field(tree.type);
+    s.field(tree.flags);
+    s.field(tree.id);
+    s.field(tree.x);
+    s.packed(tree.y, tree.height);
 }
 
-static void read_encounter(const u8 **p, Encounter *encounter)
+template <class S, class R> static void visit_encounter(S &s, R &encounter)
 {
-    encounter->id = read_u16(p);
-    encounter->animal_id = read_u16(p);
-    encounter->dialogue_id = *(*p)++;
-    encounter->required = *(*p)++;
-    encounter->correct = *(*p)++;
-    encounter->reward = *(*p)++;
-    encounter->retry_frames = read_u16(p);
+    s.field(encounter.id);
+    s.field(encounter.animal_id);
+    s.field(encounter.dialogue_id);
+    s.field(encounter.required);
+    s.field(encounter.correct);
+    s.field(encounter.reward);
+    s.field(encounter.retry_frames);
 }
 
-static void write_pickup(u8 **p, const Pickup *pickup)
+/* The markers and the object runs, in the order the body stores them. */
+template <class S, class L> static void visit_body_records(S &s, L &level)
 {
-    *(*p)++ = pickup->type;
-    *(*p)++ = pickup->flags;
-    put_u16(p, pickup->id);
-    put_u16(p, pickup->x);
-    put_u16(p, pickup->y);
-}
-
-static void write_animal(u8 **p, const AnimalSpawn *animal)
-{
-    *(*p)++ = animal->type;
-    *(*p)++ = animal->flags;
-    put_u16(p, animal->id);
-    put_u16(p, animal->x);
-    put_u16(p, animal->y);
-    put_u16(p, animal->min_x);
-    put_u16(p, animal->max_x);
-    put_u16(p, animal->tree_id);
-    put_u16(p, animal->climb_min);
-    put_u16(p, animal->climb_max);
-    put_u16(p, animal->dialogue_id);
-}
-
-static void write_tree(u8 **p, const Tree *tree)
-{
-    *(*p)++ = tree->type;
-    *(*p)++ = tree->flags;
-    put_u16(p, tree->id);
-    put_u16(p, tree->x);
-    put_u16(p, (u16)(tree->y | ((u16)tree->height << 8)));
-}
-
-static void write_encounter(u8 **p, const Encounter *encounter)
-{
-    put_u16(p, encounter->id);
-    put_u16(p, encounter->animal_id);
-    *(*p)++ = encounter->dialogue_id;
-    *(*p)++ = encounter->required;
-    *(*p)++ = encounter->correct;
-    *(*p)++ = encounter->reward;
-    put_u16(p, encounter->retry_frames);
+    unsigned i;
+    s.field(level.start);
+    s.field(level.exit);
+    s.field(level.home);
+    for (i = 0; i < level.checkpoint_count; ++i) s.field(level.checkpoints[i]);
+    for (i = 0; i < level.pickup_count; ++i) visit_pickup(s, level.pickups[i]);
+    for (i = 0; i < level.animal_count; ++i) visit_animal(s, level.animals[i]);
+    for (i = 0; i < level.tree_count; ++i) visit_tree(s, level.trees[i]);
+    for (i = 0; i < level.encounter_count; ++i) visit_encounter(s, level.encounters[i]);
 }
 
 static bool read_level_file(const char *path, Bytes &blob, u32 *size, Error &error)
@@ -472,34 +431,50 @@ static bool read_level_file(const char *path, Bytes &blob, u32 *size, Error &err
     return true;
 }
 
-static bool read_level_header(LevelData *level, const u8 *blob, u32 size,
-                            Error &error)
+/* The metadata half of the header, past the signature, version and checksum. */
+template <class S, class L> static void visit_level_metadata(S &s, L &level)
 {
-    const u8 *p = blob + 4;
-    u16 version = read_u16(&p);
-    u16 header_size = read_u16(&p);
-    u32 crc = read_u32_at(p);
-    p += 4;
+    s.field(level.width);
+    s.field(level.height);
+    s.field(level.theme);
+    s.field(level.required_red);
+    s.field(level.cloud_seed);
+    s.field(level.checkpoint_count);
+    s.field(level.pickup_count);
+    s.field(level.animal_count);
+    s.field(level.tree_count);
+    s.field(level.encounter_count);
+}
+
+static bool read_level_header(LevelData *level, const u8 *blob, u32 size,
+                              Error &error)
+{
+    Reader r(blob);
+    u16 version, header_size;
+    u32 crc;
     if (memcmp(blob, KLV_SIGNATURE, 4))
         return error.fail("unsupported KLV signature");
+    r.skip(4);
+    version = r.word();
+    header_size = r.word();
+    crc = r.dword();
     if (version != KLV_VERSION || header_size != KLV_HEADER_SIZE)
         return error.fail("unsupported KLV version");
     if (assets_crc32(blob + KLV_HEADER_SIZE, size - KLV_HEADER_SIZE) != crc)
         return error.fail("KLV checksum mismatch");
-    level->width = read_u16(&p);
-    level->height = read_u16(&p);
-    level->theme = *p++;
-    level->required_red = *p++;
-    level->cloud_seed = read_u32_at(p);
-    p += 4;
-    level->checkpoint_count = read_u16(&p);
-    level->pickup_count = read_u16(&p);
-    level->animal_count = read_u16(&p);
-    level->tree_count = read_u16(&p);
-    level->encounter_count = read_u16(&p);
+    visit_level_metadata(r, *level);
     if (!level_counts_in_range(level))
         return error.fail("invalid KLV metadata");
     return true;
+}
+
+static void write_level_header(Writer &w, const LevelData *level, u32 crc)
+{
+    w.bytes(KLV_SIGNATURE, 4);
+    w.word(KLV_VERSION);
+    w.word(KLV_HEADER_SIZE);
+    w.dword(crc);
+    visit_level_metadata(w, *level);
 }
 
 /* The tile map stays in a local block until the whole payload has parsed, so a
@@ -507,34 +482,26 @@ static bool read_level_header(LevelData *level, const u8 *blob, u32 size,
 bool level_load(LevelData *level, const char *path, Error &error)
 {
     Bytes blob, map;
-    const u8 *p, *end;
+    const u8 *body, *end;
     u32 size, map_bytes;
-    unsigned i;
     memset(level, 0, sizeof(*level));
     if (!read_level_file(path, blob, &size, error)) return false;
     if (!read_level_header(level, blob.get(), size, error)) {
         memset(level, 0, sizeof(*level));
         return false;
     }
-    p = blob.get() + KLV_HEADER_SIZE;
+    body = blob.get() + KLV_HEADER_SIZE;
     end = blob.get() + size;
     map_bytes = level_map_bytes(level);
-    if ((u32)(end - p) < level_body_bytes(level)) {
+    if ((u32)(end - body) < level_body_bytes(level)) {
         memset(level, 0, sizeof(*level));
         return error.fail("truncated KLV payload");
     }
     if (!map.alloc(map_bytes)) return error.fail("not enough memory for tile map");
-    memcpy(map.get(), p, (unsigned)map_bytes);
-    p += map_bytes;
-    read_point(&p, &level->start);
-    read_point(&p, &level->exit);
-    read_point(&p, &level->home);
-    for (i = 0; i < level->checkpoint_count; ++i) read_point(&p, &level->checkpoints[i]);
-    for (i = 0; i < level->pickup_count; ++i) read_pickup(&p, &level->pickups[i]);
-    for (i = 0; i < level->animal_count; ++i) read_animal(&p, &level->animals[i]);
-    for (i = 0; i < level->tree_count; ++i) read_tree(&p, &level->trees[i]);
-    for (i = 0; i < level->encounter_count; ++i) read_encounter(&p, &level->encounters[i]);
-    if (p != end) {
+    memcpy(map.get(), body, (unsigned)map_bytes);
+    Reader r(body + map_bytes);
+    visit_body_records(r, *level);
+    if (r.at() != end) {
         memset(level, 0, sizeof(*level));
         return error.fail("unexpected KLV payload size");
     }
@@ -546,41 +513,19 @@ bool level_load(LevelData *level, const char *path, Error &error)
     return true;
 }
 
-static bool build_level_body(const LevelData *level, Bytes &body, u32 body_size)
+/* Lays down the whole file, body first: the header carries a CRC of everything
+ * after it, so the checksummed bytes have to exist before the header does. */
+static bool build_level_file(const LevelData *level, Bytes &out, u32 body_size)
 {
-    u8 *p;
-    unsigned i;
-    if (!body.alloc(body_size)) return false;
-    p = body.get();
-    memcpy(p, level->map, (unsigned)level_map_bytes(level));
-    p += level_map_bytes(level);
-    put_point(&p, level->start);
-    put_point(&p, level->exit);
-    put_point(&p, level->home);
-    for (i = 0; i < level->checkpoint_count; ++i) put_point(&p, level->checkpoints[i]);
-    for (i = 0; i < level->pickup_count; ++i) write_pickup(&p, &level->pickups[i]);
-    for (i = 0; i < level->animal_count; ++i) write_animal(&p, &level->animals[i]);
-    for (i = 0; i < level->tree_count; ++i) write_tree(&p, &level->trees[i]);
-    for (i = 0; i < level->encounter_count; ++i) write_encounter(&p, &level->encounters[i]);
+    u32 map_bytes = level_map_bytes(level);
+    if (!out.alloc(KLV_HEADER_SIZE + body_size)) return false;
+    Writer body(out.get() + KLV_HEADER_SIZE);
+    body.bytes(level->map, (unsigned)map_bytes);
+    visit_body_records(body, *level);
+    Writer header(out.get());
+    write_level_header(header, level,
+                      assets_crc32(out.get() + KLV_HEADER_SIZE, body_size));
     return true;
-}
-
-static void write_level_header(FILE *file, const LevelData *level, u32 crc)
-{
-    fwrite(KLV_SIGNATURE, 1, 4, file);
-    write_u16(file, KLV_VERSION);
-    write_u16(file, KLV_HEADER_SIZE);
-    write_u32(file, crc);
-    write_u16(file, level->width);
-    write_u16(file, level->height);
-    fputc(level->theme, file);
-    fputc(level->required_red, file);
-    write_u32(file, level->cloud_seed);
-    write_u16(file, level->checkpoint_count);
-    write_u16(file, level->pickup_count);
-    write_u16(file, level->animal_count);
-    write_u16(file, level->tree_count);
-    write_u16(file, level->encounter_count);
 }
 
 /* Replaces the extension so KOLO.KLV becomes KOLO.TMP rather than KOLO.KLV.TMP,
@@ -602,25 +547,23 @@ bool level_save(const LevelData *level, const char *path, Error &error)
 {
     char temp[PATH_MAX_LEN], backup[PATH_MAX_LEN];
     LevelData check;
-    Bytes body;
-    u32 body_size, crc;
+    Bytes contents;
+    u32 total;
     bool had_original;
     if (!level_validate(level, error)) return false;
     if (strlen(path) + 5 >= sizeof(temp))
         return error.fail("level filename is too long");
-    body_size = level_body_bytes(level);
-    if (!build_level_body(level, body, body_size))
+    total = KLV_HEADER_SIZE + level_body_bytes(level);
+    if (!build_level_file(level, contents, level_body_bytes(level)))
         return error.fail("not enough memory to save level");
-    crc = assets_crc32(body.get(), body_size);
 
     with_extension(temp, path, ".TMP");
     with_extension(backup, path, ".BAK");
     {
         File file(temp, "wb");
         if (!file.ok()) return error.fail("cannot create temporary level");
-        write_level_header(file.get(), level, crc);
-        if (fwrite(body.get(), 1, (unsigned)body_size, file.get()) !=
-            (unsigned)body_size || !file.close()) {
+        if (fwrite(contents.get(), 1, (unsigned)total, file.get()) !=
+            (unsigned)total || !file.close()) {
             remove(temp);
             return error.fail("failed writing temporary level");
         }
@@ -781,7 +724,7 @@ static bool read_bank_blob(AssetPack *pack, FILE *file, u32 size,
 }
 
 static bool find_bank(FILE *file, const char *bank_name, u32 *offset, u32 *size,
-                     Error &error)
+                      Error &error)
 {
     u8 header[DAT_HEADER_SIZE], entry[DAT_ENTRY_SIZE];
     char wanted[DAT_NAME_SIZE + 1];
@@ -792,17 +735,19 @@ static bool find_bank(FILE *file, const char *bank_name, u32 *offset, u32 *size,
     if (fread(header, 1, sizeof(header), file) != sizeof(header) ||
         memcmp(header, DAT_SIGNATURE, DAT_NAME_SIZE))
         return error.fail("unsupported KOLOBOK.DAT format");
-    if ((header[8] | ((u16)header[9] << 8)) != DAT_VERSION)
+    Reader index(header + DAT_NAME_SIZE);
+    if (index.word() != DAT_VERSION)
         return error.fail("unsupported archive version");
-    count = (u16)(header[10] | ((u16)header[11] << 8));
+    count = index.word();
     if (!count || count > DAT_MAX_BANKS)
         return error.fail("invalid archive bank count");
     for (i = 0; i < count; ++i) {
         if (fread(entry, 1, sizeof(entry), file) != sizeof(entry))
             return error.fail("truncated archive index");
         if (!strncmp((char *)entry, wanted, DAT_NAME_SIZE)) {
-            *offset = read_u32_at(entry + 8);
-            *size = read_u32_at(entry + 12);
+            Reader located(entry + DAT_NAME_SIZE);
+            *offset = located.dword();
+            *size = located.dword();
         }
     }
     if (!*offset || *size < BANK_MIN_SIZE || *size >= BANK_MAX_SIZE)
