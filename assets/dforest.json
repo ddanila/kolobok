@@ -14,8 +14,8 @@
     {"material": "ice", "range": [117, 137]}
   ],
   "platforms": [
-    {"y": 7, "material": "grass", "ranges": [[9, 15], [70, 75], [103, 108], [145, 151]]},
-    {"y": 6, "material": "sand", "ranges": [[27, 34], [87, 94]]},
+    {"y": 7, "material": "grass", "ranges": [[9, 15], [51, 54], [70, 75], [103, 108], [145, 151]]},
+    {"y": 6, "material": "sand", "ranges": [[27, 34], [55, 57], [87, 94]]},
     {"y": 5, "material": "ice", "ranges": [[58, 64], [123, 130]]}
   ],
   "start": [2, 8],

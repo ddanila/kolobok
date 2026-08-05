@@ -59,17 +59,49 @@ pushed it away, it immediately re-targeted the same pickup and repeated. It now
 gives up on a pickup it has chased for 400 frames without collecting. Giving up
 on a *required* berry still fails the run, so the check stays meaningful.
 
-## Still unreachable
+## Reaching rows 6 and 5
 
-Rows 6 and 5 remain unreachable from the ground, and no platform chain leads to
-them — the Garden row-6 pair at x=34..39 and x=76..80 has no row-7 neighbour
-within jumping distance, and the same is true in the other two levels. Reaching
-row 6 needs about -1200 and row 5 about -1400, which is a much floatier game
-than this one currently is.
+No single jump from the ground reaches them: row 6 needs about -1200 and row 5
+about -1400, which would be a far floatier game and would drag the enemy
+placement into a rebalance. Climbing, however, needs nothing new. From a row-7
+ledge the current -1025 jump peaks at y=60, which clears both thresholds, so the
+tiers were only ever a layout problem — no lower ledge sat beside a higher one.
 
-This matters for one piece of content: the Deep Forest big pie sits at (63, 4),
-on top of the row-5 ice platform at x=58..64. `tests/test_balance.py` calls it a
-deliberate exploration reward, but it cannot currently be collected. Resolving
-that needs a decision rather than a tweak — either a much larger jump with the
-enemy rebalancing that implies, platforms rearranged into climbable chains, or
-the pie moved somewhere reachable.
+Deep Forest now has a staircase up to the big pie at (63, 4): a grass ledge on
+row 7 at x=51..54, a sand ledge on row 6 at x=55..57, and the pre-existing row-5
+ice platform at x=58..64. Measured landing rates along that route are 46%, 82%
+and 99%. Standing on the ice platform overlaps the pie's pickup box, so walking
+the ledge collects it.
+
+Two constraints shaped the placement, and both are easy to trip over again:
+
+- `tests/test_balance.py` forbids a platform above a required red berry, and
+  Deep Forest has berries at x=50 and x=65. That leaves x=51..57 as the only
+  window beside the row-5 platform.
+- A ledge must not sit above the launch columns of the ledge below it. The first
+  attempt put the row-6 step at x=66..69, directly over the run-up to the row-7
+  platform at x=70..75, and its own underside then blocked the head during the
+  ascent: landing rate on that first step fell from 19% to zero.
+
+The decorative row-6 platforms in Garden and Small Forest are deliberately left
+unreachable. Nothing is stranded on them.
+
+## Effects on the playtest bot
+
+Adding a climbable route exposed four separate deadlocks in `campaign_playtest`,
+all of which predate this change and were only hidden by platforms being
+unreachable:
+
+- It abandoned pickups it could not reach. It now gives up after 400 frames, but
+  never on a red berry, since abandoning a required item guarantees the failure
+  the rule was meant to avoid.
+- It jumped while standing on a platform, walking itself up the new staircase
+  with no way down. It now only jumps from the ground row, which is where every
+  required pickup sits.
+- It treated guardians as threats and evaded them. A full jump lifts it 38px
+  while `game_try_talk` only fires within 24px vertically, so it sailed over the
+  animal it needed to talk to. Guardians are now destinations, and being near one
+  cancels evasion entirely.
+- With every berry collected it walked to the exit and idled there, because
+  `game_exit_ready` refuses to finish while a required encounter is unsolved. It
+  now steers to the guardian once the berries are gone.

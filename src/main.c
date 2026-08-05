@@ -118,20 +118,53 @@ static int campaign_playtest(AssetPack*assets,char*error,unsigned error_size)
         if(!load_stage(assets,stage,error,error_size))return 0;game_init_carry(&game,assets,hp,lives);
         memset(abandoned,0,sizeof(abandoned));stall=0;last_target=0xffff;
         for(frame=0;frame<(unsigned)assets->map_w*75U&&!game.won&&!game.game_over;++frame){
-            int player_x=(int)(game.player.x>>KOLO_FP_SHIFT),danger=0,target_x=(int)assets->level.exit.x*16,direction=1,target_is_pickup=0;unsigned target_index=0xffff;memset(&input,0,sizeof(input));
+            int player_x=(int)(game.player.x>>KOLO_FP_SHIFT),player_y=(int)(game.player.y>>KOLO_FP_SHIFT),danger=0,talk_near=0,target_x=(int)assets->level.exit.x*16,direction=1,target_is_pickup=0;unsigned target_index=0xffff;memset(&input,0,sizeof(input));
             if(game.active_dialogue){unsigned encounter=(unsigned)game.active_encounter;game_answer_dialogue(&game,assets->level.encounters[encounter].correct);continue;}
             {unsigned best=0xffff;for(i=0;i<assets->level.pickup_count;++i)if(!game.pickup_taken[i]&&!abandoned[i]&&assets->level.pickups[i].y==8){int candidate=(int)assets->level.pickups[i].x*16+4;unsigned distance=(unsigned)(candidate>player_x?candidate-player_x:player_x-candidate);if(distance<best){best=distance;target_x=candidate;target_is_pickup=1;target_index=i;}}}
+            /* Walking to the exit is pointless while a required encounter is
+             * unsolved, because game_exit_ready refuses to finish and the bot
+             * would idle on the exit tile until the frame budget expired. Once
+             * the berries are collected, steer to the guardian instead. */
+            if(!target_is_pickup){unsigned e,j;
+                for(e=0;e<assets->level.encounter_count;++e)
+                    if(!game.encounter_solved[e]&&assets->level.encounters[e].required)
+                        for(j=0;j<assets->level.animal_count;++j)
+                            if(game.enemies[j].id==assets->level.encounters[e].animal_id)
+                                target_x=(int)(game.enemies[j].x>>KOLO_FP_SHIFT);}
             direction=target_x<player_x?-1:1;if(direction<0)input.left=1;else input.right=1;input.jump_held=1;input.talk_pressed=1;
-            for(i=0;i<assets->level.animal_count;++i){int dx=(int)(game.enemies[i].x>>KOLO_FP_SHIFT)-player_x;if(!game.enemies[i].pacified&&((direction>0&&dx>-18&&dx<68)||(direction<0&&dx<18&&dx>-68)))danger=1;}
+            /* An animal with an unsolved encounter is a destination, not a
+             * threat. game_try_talk only fires within 24px vertically while a
+             * full-height jump clears 38px, so a bot that jumps here sails over
+             * the guardian and the level can never be completed. Guardians share
+             * ground with ordinary animals, so being close to one also cancels
+             * evasion entirely: staying on the floor to talk matters more than
+             * dodging, and the encounter pacifies the animal anyway. */
+            for(i=0;i<assets->level.animal_count;++i){
+                int dx=(int)(game.enemies[i].x>>KOLO_FP_SHIFT)-player_x,talkable=0;unsigned e;
+                for(e=0;e<assets->level.encounter_count;++e)
+                    if(!game.encounter_solved[e]&&assets->level.encounters[e].animal_id==game.enemies[i].id)talkable=1;
+                if(talkable){if(dx>-48&&dx<48)talk_near=1;continue;}
+                if(!game.enemies[i].pacified&&((direction>0&&dx>-18&&dx<68)||(direction<0&&dx<18&&dx>-68)))danger=1;}
             for(i=12;i<=64;i+=8)if(game_tile_hazard(&game,player_x+direction*(int)i,KOLO_LEVEL_HEIGHT*16-8))danger=1;
             if(target_is_pickup&&player_x-target_x>-10&&player_x-target_x<10&&!game.player.on_ground){input.left=input.right=0;}
-            if(game.player.on_ground&&(danger||(game.player.vx==0&&player_x-target_x>12)||(game.player.vx==0&&player_x-target_x< -12))){input.jump_pressed=1;}
+            /* Only jump from the ground row. Every required pickup sits there, so
+             * the bot has no reason to climb, and jumping while already standing
+             * on a platform used to walk it up a staircase it could not descend.
+             * Standing on the ground row puts the top of the player at
+             * (KOLO_LEVEL_HEIGHT-2)*16 - KOLO_PLAYER_H. */
+            if(!talk_near&&game.player.on_ground&&player_y>=(KOLO_LEVEL_HEIGHT-2)*16-KOLO_PLAYER_H-4&&
+               (danger||(game.player.vx==0&&player_x-target_x>12)||(game.player.vx==0&&player_x-target_x< -12))){input.jump_pressed=1;}
             game_step(&game,&input);
-            /* Nearest-pickup steering can loop forever when a detour sits inside
-             * an enemy patrol: the bot is knocked back, re-targets the same item
-             * and repeats. Give up on an item it has chased without collecting
-             * for 400 frames. Abandoning a required berry still fails below. */
-            if(target_is_pickup&&target_index==last_target){if(++stall>=400){abandoned[target_index]=1;stall=0;}}
+            /* Nearest-pickup steering can loop forever when an optional detour
+             * sits inside an enemy patrol: the bot is knocked back, re-targets
+             * the same item and repeats. Give up on one it has chased for 400
+             * frames without collecting. Red berries are exempt, because the
+             * level cannot be completed without them, so giving up guarantees
+             * the failure it was meant to avoid; keep trying until the frame
+             * budget runs out and report that instead. */
+            if(target_is_pickup&&target_index==last_target&&
+               assets->level.pickups[target_index].type!=KOLO_PICKUP_RED){
+                if(++stall>=400){abandoned[target_index]=1;stall=0;}}
             else{last_target=target_is_pickup?target_index:0xffff;stall=0;}
         }
         if(!game.won||game.game_over||game.red_collected<assets->level.required_red||!game.guardian_solved){
