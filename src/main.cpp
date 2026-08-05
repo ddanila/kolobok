@@ -406,9 +406,9 @@ static int bot_guardian_x(const GameState *game, int fallback_x)
     int target_x = fallback_x;
     for (e = 0; e < level->encounter_count; ++e) {
         if (game->encounter_solved[e] || !level->encounters[e].required) continue;
-        for (j = 0; j < level->animal_count; ++j)
-            if (game->enemies[j].id == level->encounters[e].animal_id)
-                target_x = (int)(game->enemies[j].x >> FP_SHIFT);
+        const EnemyState *guardian = find_by_id(game->enemies, level->animal_count,
+                                               level->encounters[e].animal_id);
+        if (guardian) target_x = (int)(guardian->x >> FP_SHIFT);
     }
     return target_x;
 }

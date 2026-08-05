@@ -570,7 +570,7 @@ static void draw_tiles(const AssetPack *assets, int camera, int first, int last)
     begin_latch_writes();
     for (ty = 0; ty < level->height; ++ty)
         for (tx = first; tx < last; ++tx) {
-            unsigned tile = level->map[ty * level->width + tx];
+            unsigned tile = level->tile(tx, ty);
             int x = tx * TILE_SIZE - camera;
             int y = HUD_H + ty * TILE_SIZE;
             if (tile && tile < assets->tile_count && tile_fully_onscreen(x, y))
@@ -582,7 +582,7 @@ static void draw_tiles(const AssetPack *assets, int camera, int first, int last)
         set_map_mask((unsigned char)(1 << plane));
         for (ty = 0; ty < level->height; ++ty)
             for (tx = first; tx < last; ++tx) {
-                unsigned tile = level->map[ty * level->width + tx];
+                unsigned tile = level->tile(tx, ty);
                 int x = tx * TILE_SIZE - camera;
                 int y = HUD_H + ty * TILE_SIZE;
                 if (tile && tile < assets->tile_count && !tile_fully_onscreen(x, y))

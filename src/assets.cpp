@@ -293,32 +293,16 @@ static bool validate_trees(const LevelData *level, Error &error)
     return true;
 }
 
-static bool tree_exists(const LevelData *level, u16 tree_id)
-{
-    unsigned i;
-    for (i = 0; i < level->tree_count; ++i)
-        if (level->trees[i].id == tree_id) return true;
-    return false;
-}
-
-static bool animal_exists(const LevelData *level, u16 animal_id)
-{
-    unsigned i;
-    for (i = 0; i < level->animal_count; ++i)
-        if (level->animals[i].id == animal_id) return true;
-    return false;
-}
-
 static bool validate_cross_references(const LevelData *level, Error &error)
 {
     unsigned i, j, required = 0;
     for (i = 0; i < level->animal_count; ++i)
         if (level->animals[i].tree_id != NO_ID &&
-            !tree_exists(level, level->animals[i].tree_id))
+            !find_by_id(level->trees, level->tree_count, level->animals[i].tree_id))
             return error.fail("animal refers to missing tree");
     for (i = 0; i < level->encounter_count; ++i) {
         const Encounter *encounter = &level->encounters[i];
-        if (!animal_exists(level, encounter->animal_id))
+        if (!find_by_id(level->animals, level->animal_count, encounter->animal_id))
             return error.fail("encounter refers to missing animal");
         if (encounter->correct >= ANSWER_COUNT || encounter->reward > Reward::SMALL_PIE)
             return error.fail("invalid encounter record");

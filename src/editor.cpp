@@ -92,7 +92,7 @@ static void paint_at_cursor(Editor *editor)
 {
     LevelData *level = &editor->assets.level;
     if (editor->layer == LAYER_TILE) {
-        level->map[editor->cursor_y * level->width + editor->cursor_x] = (u8)editor->tool;
+        level->tile(editor->cursor_x, editor->cursor_y) = (u8)editor->tool;
         editor->dirty = true;
     } else if (editor->layer == LAYER_OBJECT) {
         if (place_object(level, editor->cursor_x, editor->cursor_y, editor->tool))
@@ -108,7 +108,7 @@ static void erase_at_cursor(Editor *editor)
 {
     LevelData *level = &editor->assets.level;
     if (editor->layer == LAYER_TILE) {
-        level->map[editor->cursor_y * level->width + editor->cursor_x] = Tile::AIR;
+        level->tile(editor->cursor_x, editor->cursor_y) = Tile::AIR;
         editor->dirty = true;
     } else if (editor->layer == LAYER_OBJECT &&
                erase_object(level, editor->cursor_x, editor->cursor_y)) {
@@ -190,7 +190,7 @@ static bool editor_selftest(void)
     remove(path);
     remove("EDITTEST.TMP");
     if (!make_blank(&level)) return false;
-    level.map[5 * BLANK_WIDTH + 10] = Tile::GRASS_PLATFORM;
+    level.tile(10, 5) = Tile::GRASS_PLATFORM;
     level.checkpoint_count = 1;
     level.checkpoints[0].x = 20;
     level.checkpoints[0].y = 8;
@@ -240,7 +240,7 @@ static bool editor_selftest(void)
     }
     animal = &check.animals[1];
     encounter = encounter_for(&check, animal->id, 0);
-    if (check.map[5 * BLANK_WIDTH + 10] != Tile::GRASS_PLATFORM ||
+    if (check.tile(10, 5) != Tile::GRASS_PLATFORM ||
         check.checkpoint_count != 1 || check.theme != Theme::FOREST ||
         check.required_red != 0 || check.cloud_seed != 2 ||
         animal->type != AnimalType::WOLF || animal->flags != 1 ||
@@ -253,7 +253,7 @@ static bool editor_selftest(void)
 
     /* Saving a level that lost objects must shrink the payload, not leave stale
      * records behind, so round-trip an erase as well as an edit. */
-    check.map[5 * BLANK_WIDTH + 10] = Tile::AIR;
+    check.tile(10, 5) = Tile::AIR;
     check.checkpoint_count = 0;
     if (!level_save(&check, path, error)) {
         level_free(&check);
@@ -261,7 +261,7 @@ static bool editor_selftest(void)
     }
     level_free(&check);
     if (!level_load(&check, path, error) ||
-        check.map[5 * BLANK_WIDTH + 10] != Tile::AIR || check.checkpoint_count != 0) {
+        check.tile(10, 5) != Tile::AIR || check.checkpoint_count != 0) {
         level_free(&check);
         return false;
     }

@@ -49,7 +49,7 @@ static u8 tile_at(const GameState *game, int x, int y)
     tx = x / TILE_SIZE;
     ty = y / TILE_SIZE;
     if (ty >= level->height) return Tile::SPIKES;
-    return level->map[ty * level->width + tx];
+    return level->tile(tx, ty);
 }
 
 static bool tile_has_flag(const GameState *game, int x, int y, u8 flag)
@@ -205,10 +205,8 @@ static void patrol(EnemyState *e, s32 speed)
 static int tree_x(const GameState *game, u16 id)
 {
     const LevelData *level = &game->assets->level;
-    unsigned i;
-    for (i = 0; i < level->tree_count; ++i)
-        if (level->trees[i].id == id) return tiles_to_px(level->trees[i].x);
-    return -1;
+    const Tree *tree = find_by_id(level->trees, level->tree_count, id);
+    return tree ? tiles_to_px(tree->x) : -1;
 }
 
 static void update_rabbit(EnemyState *e)
@@ -450,6 +448,7 @@ bool game_exit_ready(const GameState *game)
            game->guardian_solved;
 }
 
+/* find_by_id hands back a const record; talking has to arm the enemy it found. */
 static EnemyState *enemy_by_id(GameState *game, u16 animal_id)
 {
     unsigned i;

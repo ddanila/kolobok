@@ -15,8 +15,8 @@ bool make_blank(LevelData *level)
     level->map = (u8 *)calloc(BLANK_WIDTH * LEVEL_HEIGHT, 1);
     if (!level->map) return false;
     for (x = 0; x < BLANK_WIDTH; ++x) {
-        level->map[BLANK_GROUND_ROW * BLANK_WIDTH + x] = Tile::GRASS_TOP;
-        level->map[(BLANK_GROUND_ROW + 1) * BLANK_WIDTH + x] = Tile::GRASS_BODY;
+        level->tile(x, BLANK_GROUND_ROW) = Tile::GRASS_TOP;
+        level->tile(x, BLANK_GROUND_ROW + 1) = Tile::GRASS_BODY;
     }
     level->start.x = 2;
     level->start.y = 8;
@@ -78,14 +78,9 @@ bool valid_83(const char *name)
 
 static bool id_in_use(const LevelData *level, u16 id)
 {
-    unsigned i;
-    for (i = 0; i < level->pickup_count; ++i)
-        if (level->pickups[i].id == id) return true;
-    for (i = 0; i < level->animal_count; ++i)
-        if (level->animals[i].id == id) return true;
-    for (i = 0; i < level->tree_count; ++i)
-        if (level->trees[i].id == id) return true;
-    return false;
+    return find_by_id(level->pickups, level->pickup_count, id) != 0 ||
+           find_by_id(level->animals, level->animal_count, id) != 0 ||
+           find_by_id(level->trees, level->tree_count, id) != 0;
 }
 
 /* Pickups, animals and trees draw from one ID space. level_validate only rejects
@@ -99,31 +94,22 @@ static u16 next_object_id(const LevelData *level)
     return id;
 }
 
-static bool encounter_id_in_use(const LevelData *level, u16 id)
-{
-    unsigned i;
-    for (i = 0; i < level->encounter_count; ++i)
-        if (level->encounters[i].id == id) return true;
-    return false;
-}
-
 static u16 next_encounter_id(const LevelData *level)
 {
     u16 id = 1;
-    while (encounter_id_in_use(level, id)) ++id;
+    while (find_by_id(level->encounters, level->encounter_count, id)) ++id;
     return id;
 }
 
 Encounter *encounter_for(LevelData *level, u16 animal_id, bool create)
 {
-    const AnimalSpawn *animal = 0;
+    const AnimalSpawn *animal;
     Encounter *encounter;
     unsigned i;
     for (i = 0; i < level->encounter_count; ++i)
         if (level->encounters[i].animal_id == animal_id) return &level->encounters[i];
     if (!create || level->encounter_count >= MAX_ENCOUNTERS) return 0;
-    for (i = 0; i < level->animal_count; ++i)
-        if (level->animals[i].id == animal_id) animal = &level->animals[i];
+    animal = find_by_id(level->animals, level->animal_count, animal_id);
     encounter = &level->encounters[level->encounter_count++];
     memset(encounter, 0, sizeof(*encounter));
     encounter->id = next_encounter_id(level);

@@ -48,7 +48,7 @@ static void test_blank_is_valid(void)
     assert(valid(&level));
     assert(level.width == BLANK_WIDTH && level.height == LEVEL_HEIGHT);
     for (x = 0; x < BLANK_WIDTH; ++x)
-        assert(level.map[BLANK_GROUND_ROW * BLANK_WIDTH + x] == Tile::GRASS_TOP);
+        assert(level.tile(x, BLANK_GROUND_ROW) == Tile::GRASS_TOP);
     level_free(&level);
 }
 
