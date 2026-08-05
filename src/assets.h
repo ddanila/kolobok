@@ -105,6 +105,9 @@ private:
  * a larger one cannot round-trip into the encounter that answers for it. */
 #define MAX_DIALOGUE_ID 255
 
+/* Every dialogue offers three answers, so a correct answer is 0..2. */
+#define ANSWER_COUNT 3
+
 typedef struct Point { u16 x, y; } Point;
 
 typedef struct Pickup {

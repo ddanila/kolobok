@@ -489,7 +489,8 @@ int game_answer_dialogue(GameState *game, unsigned answer)
     const Encounter *encounter;
     EnemyState *e;
     unsigned index;
-    if (!game->active_dialogue || game->active_encounter < 0 || answer > 2) return 0;
+    if (!game->active_dialogue || game->active_encounter < 0 ||
+        answer >= ANSWER_COUNT) return 0;
     index = (unsigned)game->active_encounter;
     encounter = &game->assets->level.encounters[index];
     game->active_dialogue = 0;

@@ -882,8 +882,10 @@ int main(int argc, char **argv)
         }
         if (app.game.active_dialogue) {
             if (key_pressed(Key::UP))
-                dialogue_choice = dialogue_choice ? dialogue_choice - 1 : 2;
-            if (key_pressed(Key::DOWN)) dialogue_choice = (dialogue_choice + 1) % 3;
+                dialogue_choice = dialogue_choice ? dialogue_choice - 1
+                                                  : ANSWER_COUNT - 1;
+            if (key_pressed(Key::DOWN))
+                dialogue_choice = (dialogue_choice + 1) % ANSWER_COUNT;
             if (key_pressed(Key::DIGIT_1)) dialogue_choice = 0;
             if (key_pressed(Key::DIGIT_2)) dialogue_choice = 1;
             if (key_pressed(Key::DIGIT_3)) dialogue_choice = 2;

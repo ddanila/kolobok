@@ -320,7 +320,7 @@ static bool validate_cross_references(const LevelData *level, Error &error)
         const Encounter *encounter = &level->encounters[i];
         if (!animal_exists(level, encounter->animal_id))
             return error.fail("encounter refers to missing animal");
-        if (encounter->correct > 2 || encounter->reward > Reward::SMALL_PIE)
+        if (encounter->correct >= ANSWER_COUNT || encounter->reward > Reward::SMALL_PIE)
             return error.fail("invalid encounter record");
         for (j = 0; j < i; ++j)
             if (level->encounters[j].id == encounter->id)

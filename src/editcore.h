@@ -31,8 +31,8 @@ int valid_83(const char *name);
 int find_object(const LevelData *level, unsigned x, unsigned y,
                 unsigned *kind, unsigned *index);
 Encounter *encounter_for(LevelData *level, u16 animal_id, int create);
-int adjust_property(LevelData *level, unsigned kind, unsigned index,
-                    unsigned field, int delta);
+bool adjust_property(LevelData *level, unsigned kind, unsigned index,
+                     unsigned field, int delta);
 int place_object(LevelData *level, unsigned x, unsigned y, unsigned tool);
 int erase_object(LevelData *level, unsigned x, unsigned y);
 

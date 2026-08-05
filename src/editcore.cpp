@@ -159,19 +159,42 @@ int find_object(const LevelData *level, unsigned x, unsigned y,
     return 0;
 }
 
-static u8 wrap_u8(u8 value, int delta, unsigned count)
+/* The property panel only ever nudges one field by one step, so each kind of
+ * field gets a mutator that takes the field itself. Keeping the arithmetic and
+ * the narrowing in here is what leaves the adjust_ functions below reading as a
+ * list of rules rather than a list of casts. */
+static void cycle(u8 &value, int delta, unsigned count)
 {
     int next = (int)value + delta;
     while (next < 0) next += (int)count;
     while (next >= (int)count) next -= (int)count;
-    return (u8)next;
+    value = (u8)next;
 }
 
-static int clamp_int(int value, int low, int high)
+static void bump(u8 &value, int delta) { value = (u8)((int)value + delta); }
+
+static int clamped(int value, int low, int high)
 {
     if (value < low) return low;
-    if (value > high) return high;
-    return value;
+    return value > high ? high : value;
+}
+
+static void clamp(u8 &value, int delta, int low, int high)
+{
+    value = (u8)clamped((int)value + delta, low, high);
+}
+
+static void clamp(u16 &value, int delta, int low, int high)
+{
+    value = (u16)clamped((int)value + delta, low, high);
+}
+
+/* Wraps round the ends of an inclusive range, for the fields that start at 1
+ * because 0 already means "unset". */
+static long wrapped(long value, long low, long high)
+{
+    if (value < low) return high;
+    return value > high ? low : value;
 }
 
 /* Cycles through the level's trees and back to "no tree" at either end. */
@@ -191,102 +214,87 @@ static void adjust_tree_association(LevelData *level, AnimalSpawn *animal, int d
     animal->tree_id = next < 0 ? NO_ID : level->trees[next].id;
 }
 
-static int adjust_level_property(LevelData *level, unsigned field, int delta)
+static bool adjust_level_property(LevelData *level, unsigned field, int delta)
 {
-    if (field == LevelField::THEME) {
-        level->theme = wrap_u8(level->theme, delta, Theme::COUNT);
-    } else if (field == LevelField::REQUIRED_RED) {
-        level->required_red = (u8)clamp_int((int)level->required_red + delta,
-                                            0, MAX_PICKUPS);
-    } else {
-        long seed = (long)level->cloud_seed + delta;
-        if (seed < 1) seed = MAX_CLOUD_SEED;
-        if (seed > MAX_CLOUD_SEED) seed = 1;
-        level->cloud_seed = (u32)seed;
-    }
-    return 1;
+    if (field == LevelField::THEME)
+        cycle(level->theme, delta, Theme::COUNT);
+    else if (field == LevelField::REQUIRED_RED)
+        clamp(level->required_red, delta, 0, MAX_PICKUPS);
+    else
+        level->cloud_seed = (u32)wrapped((long)level->cloud_seed + delta,
+                                         1, MAX_CLOUD_SEED);
+    return true;
 }
 
-static int adjust_pickup_property(Pickup *pickup, unsigned field, int delta)
+static bool adjust_pickup_property(Pickup *pickup, unsigned field, int delta)
 {
-    if (field == PickupField::SUBTYPE)
-        pickup->type = wrap_u8(pickup->type, delta, PickupType::COUNT);
-    else
-        pickup->flags = (u8)(pickup->flags + delta);
-    return 1;
+    if (field == PickupField::SUBTYPE) cycle(pickup->type, delta, PickupType::COUNT);
+    else bump(pickup->flags, delta);
+    return true;
 }
 
-static int adjust_tree_property(Tree *tree, unsigned field, int delta)
+static bool adjust_tree_property(Tree *tree, unsigned field, int delta)
 {
-    if (field == TreeField::TYPE)
-        tree->type = wrap_u8(tree->type, delta, TreeType::COUNT);
-    else if (field == TreeField::FLAGS)
-        tree->flags = (u8)(tree->flags + delta);
-    else
-        tree->height = (u8)clamp_int((int)tree->height + delta, 1, MAX_TREE_HEIGHT);
-    return 1;
+    if (field == TreeField::TYPE) cycle(tree->type, delta, TreeType::COUNT);
+    else if (field == TreeField::FLAGS) bump(tree->flags, delta);
+    else clamp(tree->height, delta, 1, MAX_TREE_HEIGHT);
+    return true;
 }
 
 /* Editing an encounter field creates the encounter on demand and marks the animal
  * as talkable, so an animal can be turned into a guardian without a second step. */
-static int adjust_animal_property(LevelData *level, unsigned index,
-                                  unsigned field, int delta)
+static bool adjust_animal_property(LevelData *level, unsigned index,
+                                   unsigned field, int delta)
 {
     AnimalSpawn *animal = &level->animals[index];
     Encounter *encounter;
-    int value;
     switch (field) {
     case AnimalField::SUBTYPE:
-        animal->type = wrap_u8(animal->type, delta, AnimalType::COUNT);
+        cycle(animal->type, delta, AnimalType::COUNT);
         break;
     case AnimalField::FLAGS:
-        animal->flags = (u8)(animal->flags + delta);
+        bump(animal->flags, delta);
         break;
     case AnimalField::DIALOGUE:
-        value = animal->dialogue_id == NO_ID ? 1 : (int)animal->dialogue_id + delta;
-        if (value < 1) value = MAX_DIALOGUE_ID;
-        if (value > MAX_DIALOGUE_ID) value = 1;
-        animal->dialogue_id = (u16)value;
+        animal->dialogue_id = (u16)wrapped(animal->dialogue_id == NO_ID
+                                               ? 1 : (long)animal->dialogue_id + delta,
+                                           1, MAX_DIALOGUE_ID);
         encounter = encounter_for(level, animal->id, 1);
-        if (encounter) encounter->dialogue_id = (u8)value;
+        if (encounter) encounter->dialogue_id = (u8)animal->dialogue_id;
         break;
     case AnimalField::REWARD:
         encounter = encounter_for(level, animal->id, 1);
-        if (!encounter) return 0;
-        encounter->reward = wrap_u8(encounter->reward, delta, Reward::COUNT);
+        if (!encounter) return false;
+        cycle(encounter->reward, delta, Reward::COUNT);
         animal->flags |= 1;
         break;
     case AnimalField::ANSWER:
         encounter = encounter_for(level, animal->id, 1);
-        if (!encounter) return 0;
-        encounter->correct = wrap_u8(encounter->correct, delta, 3);
+        if (!encounter) return false;
+        cycle(encounter->correct, delta, ANSWER_COUNT);
         animal->flags |= 1;
         break;
     case AnimalField::PATROL_LEFT:
-        animal->min_x = (u16)clamp_int((int)animal->min_x + delta, 0, (int)animal->x);
+        clamp(animal->min_x, delta, 0, animal->x);
         break;
     case AnimalField::PATROL_RIGHT:
-        animal->max_x = (u16)clamp_int((int)animal->max_x + delta, (int)animal->x,
-                                       (int)level->width - 1);
+        clamp(animal->max_x, delta, animal->x, level->width - 1);
         break;
     case AnimalField::TREE:
         adjust_tree_association(level, animal, delta);
         break;
     case AnimalField::CLIMB_TOP:
-        animal->climb_min = (u16)clamp_int((int)animal->climb_min + delta, 0,
-                                           (int)animal->climb_max);
+        clamp(animal->climb_min, delta, 0, animal->climb_max);
         break;
     default:
-        animal->climb_max = (u16)clamp_int((int)animal->climb_max + delta,
-                                           (int)animal->climb_min,
-                                           (int)level->height - 1);
+        clamp(animal->climb_max, delta, animal->climb_min, level->height - 1);
         break;
     }
-    return 1;
+    return true;
 }
 
-int adjust_property(LevelData *level, unsigned kind, unsigned index,
-                          unsigned field, int delta)
+bool adjust_property(LevelData *level, unsigned kind, unsigned index,
+                     unsigned field, int delta)
 {
     if (kind == PropertyKind::LEVEL) return adjust_level_property(level, field, delta);
     if (kind == PropertyKind::PICKUP && index < level->pickup_count)
@@ -295,7 +303,7 @@ int adjust_property(LevelData *level, unsigned kind, unsigned index,
         return adjust_tree_property(&level->trees[index], field, delta);
     if (kind == PropertyKind::ANIMAL && index < level->animal_count)
         return adjust_animal_property(level, index, field, delta);
-    return 0;
+    return false;
 }
 
 static int place_pickup(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)

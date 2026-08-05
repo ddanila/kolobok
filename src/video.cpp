@@ -858,7 +858,7 @@ void video_render_dialogue(const GameState *game, unsigned selection)
         "LONG EARS SHORT TAIL WHO AM I",
         "WHO HOWLS UNDER THE MOON"
     };
-    static const char *answers[6][3] = {
+    static const char *answers[6][ANSWER_COUNT] = {
         {"1 TURNIP", "2 CABBAGE", "3 ONION"},
         {"1 LEFT", "2 MIDDLE", "3 RIGHT"},
         {"1 ROAD WINDOW HOME", "2 HOME ROAD WINDOW", "3 WINDOW ROAD HOME"},
@@ -876,7 +876,7 @@ void video_render_dialogue(const GameState *game, unsigned selection)
     fill_rect(12 + draw_pan, 45, 296, 112, COLOR_NIGHT);
     fill_rect(16 + draw_pan, 49, 288, 104, panel);
     draw_text(25 + draw_pan, 57, questions[id - 1], COLOR_WHITE, 1);
-    for (i = 0; i < 3; ++i)
+    for (i = 0; i < ANSWER_COUNT; ++i)
         draw_text(30 + draw_pan, 82 + (int)i * 20, answers[id - 1][i],
                   i == selection ? COLOR_LEMON : COLOR_GREY_LIGHT, 1);
     draw_text(42 + draw_pan, 140, "ARROWS 1 2 3 ENTER", COLOR_YELLOW, 1);
