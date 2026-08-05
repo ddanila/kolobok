@@ -2,8 +2,17 @@
 
 PYTHON ?= python3
 
-# g++ accepts all of C++11 but Open Watcom's wpp accepts only static_assert,
-# decltype and the >> template close, so host-test cannot vouch for a change.
+# g++ accepts all of C++11; Open Watcom's wpp is C++98 plus static_assert,
+# decltype and the >> template close, so host-test cannot vouch for a change on
+# its own. What wpp does take, all of it verified against this build's flags:
+# references, constructors and destructors (including on every early return),
+# member functions on the POD structs, private sections, function and operator
+# overloading, function and class templates with non-type parameters, template
+# member functions, namespaces, bool, and declarations inside a for statement.
+# Two limits worth knowing before reaching for a template: it cannot deduce an
+# array extent (so countof stays a macro), and it drops const when deducing from
+# an array inside a const struct, which makes a const/non-const overload pair
+# ambiguous where a plain const parameter works.
 HOST_CXX ?= g++
 HOST_CXXFLAGS ?= -std=c++11 -Wall -Wextra -Werror
 

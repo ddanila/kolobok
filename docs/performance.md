@@ -121,7 +121,9 @@ frame timing.
 
 The v4 archive is about 88 KiB, but each indexed active bank is about 22 KiB and
 stays below the enforced 60 KiB limit. The game and editor executables are about
-48 KiB and 49 KiB. The
+49 KiB and 47 KiB; both grew roughly 1.4 KiB when the loader's cursors and scope
+guards became classes the compiler inlines at each call site, which is a trade
+this budget has ample room for. The
 renderer allocates one 64,000-byte conventional-memory scratch image for CRC test
 readback; normal drawing does not use it as a back buffer. Together with the
 loaded program, assets, game state, and stack, active conventional-memory data is
