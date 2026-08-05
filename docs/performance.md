@@ -119,18 +119,13 @@ frame timing.
 
 ## Memory use
 
-The v4 archive is about 88 KiB, but each indexed active bank is about 22 KiB and
-stays below the enforced 60 KiB limit. The game and editor executables are about
-49 KiB and 47 KiB; both grew roughly 1.4 KiB when the loader's cursors and scope
-guards became classes the compiler inlines at each call site, which is a trade
-this budget has ample room for. The
-renderer allocates one 64,000-byte conventional-memory scratch image for CRC test
-readback; normal drawing does not use it as a back buffer. Together with the
-loaded program, assets, game state, and stack, active conventional-memory data is
-well below 200 KiB. The game uses an explicit 8 KiB stack and the editor a
-16 KiB stack after expansion of the level and campaign state. Future caches may
-deliberately use more conventional memory
-when profiling shows a useful gain; 400 KiB is not treated as a hard ceiling.
+Conventional memory is not a constraint here: the program, one active bank, the
+game state and the stacks together leave most of a 386's first megabyte unused,
+so caches may take more of it whenever profiling shows a gain. The one enforced
+limit is the resource bank, which must stay under 60 KiB because DOS allocates
+the active bank in a single far block; tests/test_levels.py checks it. The
+renderer also allocates one full-screen conventional-memory scratch image for CRC
+test readback; normal drawing does not use it as a back buffer.
 
 VGA memory is the tighter fixed resource. The two 16,400-address game pages,
 title template, four HUD variants, and eleven tile patterns occupy 57,776

@@ -49,11 +49,9 @@
 #define PLANAR_ROW_WIDTH 5
 #define PATH_MAX_LEN 132
 
-/* Scope guards for the three resources the loaders juggle. Both the KLV reader
- * and the archive reader leave by half a dozen failure branches, and each one
- * used to repeat the matching fclose, free or assets_free; releasing on the way
- * out of scope instead leaves the branch holding nothing but its message. None
- * of them is copyable, because two owners would release twice. */
+/* The loaders leave by half a dozen failure branches each; releasing on the way
+ * out of scope leaves a branch holding nothing but its message. Not copyable,
+ * because two owners would release twice. */
 class File {
 public:
     File(const char *path, const char *mode) { handle = fopen(path, mode); }
@@ -74,7 +72,6 @@ public:
     ~Bytes() { if (p != NULL) free(p); }
     bool alloc(u32 size) { p = (u8 *)malloc((unsigned)size); return p != NULL; }
     u8 *get() { return p; }
-    /* Hands the block to a caller that owns it from here on. */
     u8 *release() { u8 *owned = p; p = NULL; return owned; }
 private:
     u8 *p;
@@ -82,8 +79,8 @@ private:
     Bytes &operator=(const Bytes &);
 };
 
-/* An AssetPack is filled in stages, and a stage that fails has to give back
- * what the earlier ones took. keep() is the one exit that does not. */
+/* A stage that fails has to give back what the earlier ones took; keep() is the
+ * one exit that does not. */
 class PackGuard {
 public:
     PackGuard(AssetPack *p) : pack(p) { }
@@ -95,12 +92,9 @@ private:
     PackGuard &operator=(const PackGuard &);
 };
 
-/* Cursors over a little-endian byte stream. Every field is consumed or emitted
- * in stream order, so the record readers and writers below are mirror images of
- * each other and a record's layout is stated once per direction. */
-/* field() is what makes one description of a record serve both directions: the
- * reader's overloads take a mutable field and fill it, the writer's take a const
- * one and emit it, so each visit() below is the layout stated exactly once. */
+/* Cursors over a little-endian byte stream. field() is what lets one record
+ * description serve both: the reader fills a mutable field, the writer emits a
+ * const one. */
 class Reader {
 public:
     Reader(const u8 *start) : p(start) { }
@@ -338,9 +332,8 @@ bool level_validate(const LevelData *level, Error &error)
     return validate_cross_references(level, error);
 }
 
-/* The KLV record layouts. Each is stated once and serves both directions: pass a
- * Reader and a record to fill it, a Writer and a const record to emit it. A field
- * cannot be added to one direction and forgotten in the other. */
+/* The KLV record layouts, each stated once for both directions: a Reader and a
+ * record to fill it, a Writer and a const record to emit it. */
 template <class S, class R> static void visit_pickup(S &s, R &pickup)
 {
     s.field(pickup.type);
@@ -461,8 +454,8 @@ static void write_level_header(Writer &w, const LevelData *level, u32 crc)
     visit_level_metadata(w, *level);
 }
 
-/* The tile map stays in a local block until the whole payload has parsed, so a
- * level that fails half way through hands nothing to the caller to release. */
+/* The tile map stays local until the whole payload parses, so a level that fails
+ * half way through hands the caller nothing to release. */
 bool level_load(LevelData *level, const char *path, Error &error)
 {
     Bytes blob, map;
@@ -497,8 +490,7 @@ bool level_load(LevelData *level, const char *path, Error &error)
     return true;
 }
 
-/* Lays down the whole file, body first: the header carries a CRC of everything
- * after it, so the checksummed bytes have to exist before the header does. */
+/* Body first: the header carries a CRC of everything after it. */
 static bool build_level_file(const LevelData *level, Bytes &out, u32 body_size)
 {
     u32 map_bytes = level_map_bytes(level);

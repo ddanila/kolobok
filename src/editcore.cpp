@@ -145,10 +145,8 @@ bool find_object(const LevelData *level, unsigned x, unsigned y,
     return false;
 }
 
-/* The property panel only ever nudges one field by one step, so each kind of
- * field gets a mutator that takes the field itself. Keeping the arithmetic and
- * the narrowing in here is what leaves the adjust_ functions below reading as a
- * list of rules rather than a list of casts. */
+/* The panel only nudges one field by one step. Keeping the arithmetic and the
+ * narrowing in here leaves the adjust_ functions reading as rules, not casts. */
 static void cycle(u8 &value, int delta, unsigned count)
 {
     int next = (int)value + delta;
@@ -175,8 +173,8 @@ static void clamp(u16 &value, int delta, int low, int high)
     value = (u16)clamped((int)value + delta, low, high);
 }
 
-/* Wraps round the ends of an inclusive range, for the fields that start at 1
- * because 0 already means "unset". */
+/* Wraps round an inclusive range, for fields that start at 1 because 0 means
+ * "unset". */
 static long wrapped(long value, long low, long high)
 {
     if (value < low) return high;

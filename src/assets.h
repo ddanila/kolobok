@@ -85,9 +85,8 @@ struct AnimalField {
     };
 };
 
-/* Why a load, a save or a validation failed. Callers declare one, hand it to
- * whatever may fail, and print message() if it does. fail() always returns
- * false, so reporting a failure and returning it is a single statement. */
+/* Why a load, a save or a validation failed. fail() returns false, so reporting
+ * a failure and returning it is one statement. */
 class Error {
 public:
     static const unsigned TEXT_SIZE = 96;
@@ -144,20 +143,15 @@ typedef struct LevelData {
     AnimalSpawn animals[MAX_ENEMIES];
     Tree trees[MAX_TREES];
     Encounter encounters[MAX_ENCOUNTERS];
-    /* The map is width * height bytes, row-major. Spelling that arithmetic out at
-     * each of its call sites is how a wrong stride gets in. */
+    /* The map is width * height bytes, row-major. */
     u8 tile(unsigned tx, unsigned ty) const { return map[ty * width + tx]; }
     u8 &tile(unsigned tx, unsigned ty) { return map[ty * width + tx]; }
 } LevelData;
 
-/* Pickups, animals, trees, encounters and live enemies are all looked up by ID
- * rather than by position, and every one of them keeps its ID in a field named
- * id, so one search serves them all. Returns 0 when nothing carries that ID.
- *
- * The result is const because Open Watcom drops the qualifier when deducing from
- * an array inside a const struct, which makes the const and non-const overload
- * pair it would otherwise take ambiguous. The one caller that has to modify what
- * it finds keeps its own search. */
+/* Every record kind keeps its ID in a field named id, so one search finds any of
+ * them. 0 when nothing carries that ID. The result is const because Watcom drops
+ * the qualifier when deducing from an array in a const struct, which makes the
+ * const/non-const overload pair ambiguous. */
 template <class T> const T *find_by_id(const T *items, unsigned count, u16 id)
 {
     for (unsigned i = 0; i < count; ++i)
