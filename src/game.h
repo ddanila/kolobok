@@ -5,8 +5,13 @@
 
 #define KOLO_FP_SHIFT 8
 #define KOLO_FP_ONE 256L
+#define KOLO_SCREEN_W 320
+#define KOLO_SCREEN_H 200
 #define KOLO_PLAYER_W 14
 #define KOLO_PLAYER_H 14
+/* Where the camera holds the player horizontally: slightly left of centre, so
+ * more of the level ahead is visible than behind. */
+#define KOLO_CAMERA_OFFSET 153
 /* A full jump must clear a two-tile platform. The player stands at y=130 on the
  * ground row and has to reach y<=99, because below that the lower body is still
  * inside the platform row and move_horizontal refuses to carry it over the edge.
@@ -18,6 +23,9 @@
 #define KOLO_BLUE_FRAMES 300
 #define KOLO_FREEZE_FRAMES 90
 #define KOLO_INVULNERABLE_FRAMES 30
+#define KOLO_FULL_HP 100
+#define KOLO_DEFAULT_LIVES 3
+#define KOLO_MAX_LIVES 4
 
 #define KOLO_EVENT_JUMP       0x0001
 #define KOLO_EVENT_BERRY      0x0002

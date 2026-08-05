@@ -7,10 +7,24 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define PROP_PICKUP 0
-#define PROP_ANIMAL 1
-#define PROP_TREE 2
-#define PROP_LEVEL 3
+#define BLANK_WIDTH 80
+#define BLANK_GROUND_ROW 9
+#define DEFAULT_RETRY_FRAMES 150
+#define DEFAULT_TREE_HEIGHT 3
+#define MAX_TREE_HEIGHT 8
+#define MAX_DIALOGUE_ID 255
+#define MAX_CLOUD_SEED 65535L
+#define PATROL_HALF_WIDTH 3
+#define FILENAME_MAX_LEN 80
+#define ERROR_SIZE 96
+
+/* One tool per paintable thing. On the tile layer the tool *is* the tile index;
+ * on the object layer it selects a pickup, animal or tree subtype in that order. */
+#define TOOL_COUNT 11
+#define TOOL_ANIMAL_FIRST 4
+#define TOOL_TREE_FIRST 8
+
+enum Layer { LAYER_TILE, LAYER_OBJECT, LAYER_MARKER, LAYER_COUNT };
 
 typedef struct PropertyModal {
     int open;
@@ -18,163 +32,730 @@ typedef struct PropertyModal {
     LevelData backup;
 } PropertyModal;
 
+typedef struct Editor {
+    AssetPack assets;
+    GameState preview;
+    PropertyModal prop;
+    unsigned cursor_x, cursor_y, layer, tool;
+    int dirty, valid, help, confirm_exit;
+    char filename[FILENAME_MAX_LEN];
+    char error[ERROR_SIZE];
+} Editor;
+
 static int make_blank(LevelData *level)
 {
-    unsigned x;memset(level,0,sizeof(*level));level->width=80;level->height=11;
-    level->theme=KOLO_THEME_GARDEN;level->required_red=1;level->cloud_seed=1;
-    level->map=(u8*)calloc(80*11,1);if(!level->map)return 0;
-    for(x=0;x<80;++x){level->map[9*80+x]=1;level->map[10*80+x]=2;}
-    level->start.x=2;level->start.y=8;level->exit.x=77;level->exit.y=8;level->home=level->start;
-    level->pickup_count=1;level->pickups[0].id=1;level->pickups[0].type=KOLO_PICKUP_RED;level->pickups[0].x=40;level->pickups[0].y=8;
-    level->animal_count=1;level->animals[0].id=1;level->animals[0].type=KOLO_ANIMAL_RABBIT;level->animals[0].x=70;level->animals[0].y=8;level->animals[0].min_x=65;level->animals[0].max_x=75;level->animals[0].tree_id=0xffff;level->animals[0].dialogue_id=1;level->animals[0].flags=1;
-    level->encounter_count=1;level->encounters[0].id=1;level->encounters[0].animal_id=1;level->encounters[0].dialogue_id=1;level->encounters[0].required=1;level->encounters[0].correct=1;level->encounters[0].retry_frames=150;
+    unsigned x;
+    memset(level, 0, sizeof(*level));
+    level->width = BLANK_WIDTH;
+    level->height = KOLO_LEVEL_HEIGHT;
+    level->theme = KOLO_THEME_GARDEN;
+    level->required_red = 1;
+    level->cloud_seed = 1;
+    level->map = (u8 *)calloc(BLANK_WIDTH * KOLO_LEVEL_HEIGHT, 1);
+    if (!level->map) return 0;
+    for (x = 0; x < BLANK_WIDTH; ++x) {
+        level->map[BLANK_GROUND_ROW * BLANK_WIDTH + x] = KOLO_TILE_GRASS_TOP;
+        level->map[(BLANK_GROUND_ROW + 1) * BLANK_WIDTH + x] = KOLO_TILE_GRASS_BODY;
+    }
+    level->start.x = 2;
+    level->start.y = 8;
+    level->exit.x = BLANK_WIDTH - 3;
+    level->exit.y = 8;
+    level->home = level->start;
+
+    level->pickup_count = 1;
+    level->pickups[0].id = 1;
+    level->pickups[0].type = KOLO_PICKUP_RED;
+    level->pickups[0].x = 40;
+    level->pickups[0].y = 8;
+
+    level->animal_count = 1;
+    level->animals[0].id = 1;
+    level->animals[0].type = KOLO_ANIMAL_RABBIT;
+    level->animals[0].x = 70;
+    level->animals[0].y = 8;
+    level->animals[0].min_x = 65;
+    level->animals[0].max_x = 75;
+    level->animals[0].tree_id = KOLO_NO_ID;
+    level->animals[0].dialogue_id = 1;
+    level->animals[0].flags = 1;
+
+    level->encounter_count = 1;
+    level->encounters[0].id = 1;
+    level->encounters[0].animal_id = 1;
+    level->encounters[0].dialogue_id = 1;
+    level->encounters[0].required = 1;
+    level->encounters[0].correct = 1;
+    level->encounters[0].retry_frames = DEFAULT_RETRY_FRAMES;
     return 1;
 }
 
-static int valid_83(const char*name)
+/* Levels are saved next to the DOS executable, so the name has to survive an 8.3
+ * filesystem: at most eight stem characters, one dot and three of extension. */
+static int valid_83(const char *name)
 {
-    const char*base=name;const char*p;unsigned stem=0,ext=0;int dot=0;
-    for(p=name;*p;++p)if(*p=='/'||*p=='\\')base=p+1;
-    if(!*base)return 0;
-    for(p=base;*p;++p){if(*p=='.'){if(dot)return 0;dot=1;continue;}if(*p==' '||*p=='/'||*p=='\\')return 0;if(dot)++ext;else ++stem;}
-    return stem>0&&stem<=8&&ext<=3;
+    const char *base = name, *p;
+    unsigned stem = 0, ext = 0;
+    int seen_dot = 0;
+    for (p = name; *p; ++p)
+        if (*p == '/' || *p == '\\') base = p + 1;
+    if (!*base) return 0;
+    for (p = base; *p; ++p) {
+        if (*p == '.') {
+            if (seen_dot) return 0;
+            seen_dot = 1;
+        } else if (*p == ' ' || *p == '/' || *p == '\\') {
+            return 0;
+        } else if (seen_dot) {
+            ++ext;
+        } else {
+            ++stem;
+        }
+    }
+    return stem > 0 && stem <= 8 && ext <= 3;
 }
 
-static void sync_aliases(AssetPack*assets)
+static int id_in_use(const LevelData *level, u16 id)
 {
-    unsigned i;assets->map=assets->level.map;assets->map_w=assets->level.width;assets->map_h=assets->level.height;assets->enemy_count=assets->level.animal_count;assets->berry_count=0;
-    for(i=0;i<assets->level.pickup_count;++i)if(assets->level.pickups[i].type==KOLO_PICKUP_RED)++assets->berry_count;
+    unsigned i;
+    for (i = 0; i < level->pickup_count; ++i)
+        if (level->pickups[i].id == id) return 1;
+    for (i = 0; i < level->animal_count; ++i)
+        if (level->animals[i].id == id) return 1;
+    for (i = 0; i < level->tree_count; ++i)
+        if (level->trees[i].id == id) return 1;
+    return 0;
 }
 
-static u16 next_object_id(const AssetPack*assets)
+/* Pickups, animals and trees share one ID space, because animals and encounters
+ * refer to trees by ID and level_validate rejects any duplicate. */
+static u16 next_object_id(const LevelData *level)
 {
-    u16 id=1;unsigned i;int used;
-    do{used=0;for(i=0;i<assets->level.pickup_count;++i)if(assets->level.pickups[i].id==id)used=1;
-       for(i=0;i<assets->level.animal_count;++i)if(assets->level.animals[i].id==id)used=1;
-       for(i=0;i<assets->level.tree_count;++i)if(assets->level.trees[i].id==id)used=1;
-       if(used)++id;}while(used);return id;
+    u16 id = 1;
+    while (id_in_use(level, id)) ++id;
+    return id;
 }
 
-static u16 next_encounter_id(const LevelData*level)
+static int encounter_id_in_use(const LevelData *level, u16 id)
 {
-    u16 id=1;unsigned i;int used;do{used=0;for(i=0;i<level->encounter_count;++i)if(level->encounters[i].id==id)used=1;if(used)++id;}while(used);return id;
+    unsigned i;
+    for (i = 0; i < level->encounter_count; ++i)
+        if (level->encounters[i].id == id) return 1;
+    return 0;
 }
 
-static KoloEncounter* encounter_for(LevelData*level,u16 animal_id,int create)
+static u16 next_encounter_id(const LevelData *level)
 {
-    unsigned i;KoloEncounter*e;KoloAnimalSpawn*a=0;
-    for(i=0;i<level->encounter_count;++i)if(level->encounters[i].animal_id==animal_id)return &level->encounters[i];
-    if(!create||level->encounter_count>=KOLO_MAX_ENCOUNTERS)return 0;
-    for(i=0;i<level->animal_count;++i)if(level->animals[i].id==animal_id)a=&level->animals[i];
-    e=&level->encounters[level->encounter_count++];memset(e,0,sizeof(*e));e->id=next_encounter_id(level);e->animal_id=animal_id;e->dialogue_id=(u8)(a&&a->dialogue_id!=0xffff?a->dialogue_id:1);e->retry_frames=150;return e;
+    u16 id = 1;
+    while (encounter_id_in_use(level, id)) ++id;
+    return id;
 }
 
-static int find_object(const LevelData*level,unsigned x,unsigned y,unsigned*kind,unsigned*index)
+static KoloEncounter *encounter_for(LevelData *level, u16 animal_id, int create)
 {
-    unsigned i;for(i=0;i<level->pickup_count;++i)if(level->pickups[i].x==x&&level->pickups[i].y==y){*kind=PROP_PICKUP;*index=i;return 1;}
-    for(i=0;i<level->animal_count;++i)if(level->animals[i].x==x&&level->animals[i].y==y){*kind=PROP_ANIMAL;*index=i;return 1;}
-    for(i=0;i<level->tree_count;++i)if(level->trees[i].x==x&&level->trees[i].y==y){*kind=PROP_TREE;*index=i;return 1;}return 0;
+    const KoloAnimalSpawn *animal = 0;
+    KoloEncounter *encounter;
+    unsigned i;
+    for (i = 0; i < level->encounter_count; ++i)
+        if (level->encounters[i].animal_id == animal_id) return &level->encounters[i];
+    if (!create || level->encounter_count >= KOLO_MAX_ENCOUNTERS) return 0;
+    for (i = 0; i < level->animal_count; ++i)
+        if (level->animals[i].id == animal_id) animal = &level->animals[i];
+    encounter = &level->encounters[level->encounter_count++];
+    memset(encounter, 0, sizeof(*encounter));
+    encounter->id = next_encounter_id(level);
+    encounter->animal_id = animal_id;
+    encounter->dialogue_id = (u8)(animal && animal->dialogue_id != KOLO_NO_ID
+                                  ? animal->dialogue_id : 1);
+    encounter->retry_frames = DEFAULT_RETRY_FRAMES;
+    return encounter;
 }
 
-static unsigned property_count(unsigned kind){return kind==PROP_PICKUP?2:kind==PROP_ANIMAL?10:3;}
-
-static u8 wrap_u8(u8 value,int delta,unsigned count)
+static int find_object(const LevelData *level, unsigned x, unsigned y,
+                       unsigned *kind, unsigned *index)
 {
-    int next=(int)value+delta;while(next<0)next+=(int)count;while(next>=(int)count)next-=(int)count;return (u8)next;
+    unsigned i;
+    for (i = 0; i < level->pickup_count; ++i)
+        if (level->pickups[i].x == x && level->pickups[i].y == y) {
+            *kind = KOLO_PROP_PICKUP;
+            *index = i;
+            return 1;
+        }
+    for (i = 0; i < level->animal_count; ++i)
+        if (level->animals[i].x == x && level->animals[i].y == y) {
+            *kind = KOLO_PROP_ANIMAL;
+            *index = i;
+            return 1;
+        }
+    for (i = 0; i < level->tree_count; ++i)
+        if (level->trees[i].x == x && level->trees[i].y == y) {
+            *kind = KOLO_PROP_TREE;
+            *index = i;
+            return 1;
+        }
+    return 0;
 }
 
-static void adjust_tree_association(LevelData*level,KoloAnimalSpawn*a,int delta)
+static u8 wrap_u8(u8 value, int delta, unsigned count)
 {
-    int pos=-1,next;unsigned i;if(!level->tree_count){a->tree_id=0xffff;return;}
-    for(i=0;i<level->tree_count;++i)if(level->trees[i].id==a->tree_id)pos=(int)i;
-    next=pos+delta;if(next< -1)next=(int)level->tree_count-1;if(next>=(int)level->tree_count)next=-1;
-    a->tree_id=next<0?0xffff:level->trees[next].id;
+    int next = (int)value + delta;
+    while (next < 0) next += (int)count;
+    while (next >= (int)count) next -= (int)count;
+    return (u8)next;
 }
 
-static int adjust_property(LevelData*level,unsigned kind,unsigned index,unsigned field,int delta)
+static int clamp_int(int value, int low, int high)
 {
-    if(kind==PROP_LEVEL){int value;if(field==0)level->theme=wrap_u8(level->theme,delta,3);else if(field==1){value=(int)level->required_red+delta;if(value<0)value=0;if(value>KOLO_MAX_PICKUPS)value=KOLO_MAX_PICKUPS;level->required_red=(u8)value;}else{long seed=(long)level->cloud_seed+delta;if(seed<1)seed=65535;if(seed>65535)seed=1;level->cloud_seed=(u32)seed;}return 1;}
-    if(kind==PROP_PICKUP&&index<level->pickup_count){KoloPickup*p=&level->pickups[index];if(field==0)p->type=wrap_u8(p->type,delta,4);else p->flags=(u8)(p->flags+delta);return 1;}
-    if(kind==PROP_TREE&&index<level->tree_count){KoloTree*t=&level->trees[index];if(field==0)t->type=wrap_u8(t->type,delta,3);else if(field==1)t->flags=(u8)(t->flags+delta);else{int h=(int)t->height+delta;if(h<1)h=1;if(h>8)h=8;t->height=(u8)h;}return 1;}
-    if(kind==PROP_ANIMAL&&index<level->animal_count){
-        KoloAnimalSpawn*a=&level->animals[index];KoloEncounter*e;int value;
-        switch(field){
-        case 0:a->type=wrap_u8(a->type,delta,4);break;
-        case 1:a->flags=(u8)(a->flags+delta);break;
-        case 2:value=a->dialogue_id==0xffff?1:(int)a->dialogue_id+delta;if(value<1)value=255;if(value>255)value=1;a->dialogue_id=(u16)value;e=encounter_for(level,a->id,1);if(e)e->dialogue_id=(u8)value;break;
-        case 3:e=encounter_for(level,a->id,1);if(!e)return 0;e->reward=wrap_u8(e->reward,delta,3);a->flags|=1;break;
-        case 4:e=encounter_for(level,a->id,1);if(!e)return 0;e->correct=wrap_u8(e->correct,delta,3);a->flags|=1;break;
-        case 5:value=(int)a->min_x+delta;if(value<0)value=0;if(value>(int)a->x)value=a->x;a->min_x=(u16)value;break;
-        case 6:value=(int)a->max_x+delta;if(value<(int)a->x)value=a->x;if(value>=level->width)value=level->width-1;a->max_x=(u16)value;break;
-        case 7:adjust_tree_association(level,a,delta);break;
-        case 8:value=(int)a->climb_min+delta;if(value<0)value=0;if(value>(int)a->climb_max)value=a->climb_max;a->climb_min=(u16)value;break;
-        default:value=(int)a->climb_max+delta;if(value<(int)a->climb_min)value=a->climb_min;if(value>=level->height)value=level->height-1;a->climb_max=(u16)value;break;
-        }return 1;
-    }return 0;
+    if (value < low) return low;
+    if (value > high) return high;
+    return value;
 }
 
-static int place_object(AssetPack*assets,unsigned x,unsigned y,unsigned tool)
+/* Cycles through the level's trees and back to "no tree" at either end. */
+static void adjust_tree_association(LevelData *level, KoloAnimalSpawn *animal, int delta)
 {
-    LevelData*l=&assets->level;u16 id=next_object_id(assets);
-    if(tool<4&&l->pickup_count<KOLO_MAX_PICKUPS){KoloPickup*p=&l->pickups[l->pickup_count++];memset(p,0,sizeof(*p));p->id=id;p->type=(u8)tool;p->x=(u16)x;p->y=(u16)y;return 1;}
-    if(tool<8&&l->animal_count<KOLO_MAX_ENEMIES){KoloAnimalSpawn*a=&l->animals[l->animal_count++];memset(a,0,sizeof(*a));a->id=id;a->type=(u8)(tool-4);a->x=(u16)x;a->y=(u16)y;a->min_x=(u16)(x>3?x-3:0);a->max_x=(u16)(x+3<l->width?x+3:l->width-1);a->tree_id=a->dialogue_id=0xffff;a->climb_min=a->climb_max=(u16)y;return 1;}
-    if(tool<11&&l->tree_count<KOLO_MAX_TREES){KoloTree*t=&l->trees[l->tree_count++];memset(t,0,sizeof(*t));t->id=id;t->type=(u8)(tool-8);t->x=(u16)x;t->y=(u16)y;t->height=3;return 1;}return 0;
+    int position = -1, next;
+    unsigned i;
+    if (!level->tree_count) {
+        animal->tree_id = KOLO_NO_ID;
+        return;
+    }
+    for (i = 0; i < level->tree_count; ++i)
+        if (level->trees[i].id == animal->tree_id) position = (int)i;
+    next = position + delta;
+    if (next < -1) next = (int)level->tree_count - 1;
+    if (next >= (int)level->tree_count) next = -1;
+    animal->tree_id = next < 0 ? KOLO_NO_ID : level->trees[next].id;
 }
 
-static int erase_object(LevelData*l,unsigned x,unsigned y)
+static int adjust_level_property(LevelData *level, unsigned field, int delta)
 {
-    unsigned i,j;for(i=0;i<l->pickup_count;++i)if(l->pickups[i].x==x&&l->pickups[i].y==y){memmove(&l->pickups[i],&l->pickups[i+1],(l->pickup_count-i-1)*sizeof(KoloPickup));--l->pickup_count;return 1;}
-    for(i=0;i<l->animal_count;++i)if(l->animals[i].x==x&&l->animals[i].y==y){u16 id=l->animals[i].id;memmove(&l->animals[i],&l->animals[i+1],(l->animal_count-i-1)*sizeof(KoloAnimalSpawn));--l->animal_count;for(j=0;j<l->encounter_count;)if(l->encounters[j].animal_id==id){memmove(&l->encounters[j],&l->encounters[j+1],(l->encounter_count-j-1)*sizeof(KoloEncounter));--l->encounter_count;}else ++j;return 1;}
-    for(i=0;i<l->tree_count;++i)if(l->trees[i].x==x&&l->trees[i].y==y){u16 id=l->trees[i].id;memmove(&l->trees[i],&l->trees[i+1],(l->tree_count-i-1)*sizeof(KoloTree));--l->tree_count;for(j=0;j<l->animal_count;++j)if(l->animals[j].tree_id==id)l->animals[j].tree_id=0xffff;return 1;}return 0;
+    if (field == KOLO_LEVEL_FIELD_THEME) {
+        level->theme = wrap_u8(level->theme, delta, KOLO_THEME_DEEP + 1);
+    } else if (field == KOLO_LEVEL_FIELD_REQUIRED_RED) {
+        level->required_red = (u8)clamp_int((int)level->required_red + delta,
+                                            0, KOLO_MAX_PICKUPS);
+    } else {
+        long seed = (long)level->cloud_seed + delta;
+        if (seed < 1) seed = MAX_CLOUD_SEED;
+        if (seed > MAX_CLOUD_SEED) seed = 1;
+        level->cloud_seed = (u32)seed;
+    }
+    return 1;
+}
+
+static int adjust_pickup_property(KoloPickup *pickup, unsigned field, int delta)
+{
+    if (field == KOLO_PICKUP_FIELD_SUBTYPE)
+        pickup->type = wrap_u8(pickup->type, delta, KOLO_PICKUP_BIG_PIE + 1);
+    else
+        pickup->flags = (u8)(pickup->flags + delta);
+    return 1;
+}
+
+static int adjust_tree_property(KoloTree *tree, unsigned field, int delta)
+{
+    if (field == KOLO_TREE_FIELD_TYPE)
+        tree->type = wrap_u8(tree->type, delta, KOLO_TREE_OAK + 1);
+    else if (field == KOLO_TREE_FIELD_FLAGS)
+        tree->flags = (u8)(tree->flags + delta);
+    else
+        tree->height = (u8)clamp_int((int)tree->height + delta, 1, MAX_TREE_HEIGHT);
+    return 1;
+}
+
+/* Editing an encounter field creates the encounter on demand and marks the animal
+ * as talkable, so an animal can be turned into a guardian without a second step. */
+static int adjust_animal_property(LevelData *level, unsigned index,
+                                  unsigned field, int delta)
+{
+    KoloAnimalSpawn *animal = &level->animals[index];
+    KoloEncounter *encounter;
+    int value;
+    switch (field) {
+    case KOLO_ANIMAL_FIELD_SUBTYPE:
+        animal->type = wrap_u8(animal->type, delta, KOLO_ANIMAL_BEAR + 1);
+        break;
+    case KOLO_ANIMAL_FIELD_FLAGS:
+        animal->flags = (u8)(animal->flags + delta);
+        break;
+    case KOLO_ANIMAL_FIELD_DIALOGUE:
+        value = animal->dialogue_id == KOLO_NO_ID ? 1 : (int)animal->dialogue_id + delta;
+        if (value < 1) value = MAX_DIALOGUE_ID;
+        if (value > MAX_DIALOGUE_ID) value = 1;
+        animal->dialogue_id = (u16)value;
+        encounter = encounter_for(level, animal->id, 1);
+        if (encounter) encounter->dialogue_id = (u8)value;
+        break;
+    case KOLO_ANIMAL_FIELD_REWARD:
+        encounter = encounter_for(level, animal->id, 1);
+        if (!encounter) return 0;
+        encounter->reward = wrap_u8(encounter->reward, delta, KOLO_REWARD_SMALL_PIE + 1);
+        animal->flags |= 1;
+        break;
+    case KOLO_ANIMAL_FIELD_ANSWER:
+        encounter = encounter_for(level, animal->id, 1);
+        if (!encounter) return 0;
+        encounter->correct = wrap_u8(encounter->correct, delta, 3);
+        animal->flags |= 1;
+        break;
+    case KOLO_ANIMAL_FIELD_PATROL_LEFT:
+        animal->min_x = (u16)clamp_int((int)animal->min_x + delta, 0, (int)animal->x);
+        break;
+    case KOLO_ANIMAL_FIELD_PATROL_RIGHT:
+        animal->max_x = (u16)clamp_int((int)animal->max_x + delta, (int)animal->x,
+                                       (int)level->width - 1);
+        break;
+    case KOLO_ANIMAL_FIELD_TREE:
+        adjust_tree_association(level, animal, delta);
+        break;
+    case KOLO_ANIMAL_FIELD_CLIMB_TOP:
+        animal->climb_min = (u16)clamp_int((int)animal->climb_min + delta, 0,
+                                           (int)animal->climb_max);
+        break;
+    default:
+        animal->climb_max = (u16)clamp_int((int)animal->climb_max + delta,
+                                           (int)animal->climb_min,
+                                           (int)level->height - 1);
+        break;
+    }
+    return 1;
+}
+
+static int adjust_property(LevelData *level, unsigned kind, unsigned index,
+                          unsigned field, int delta)
+{
+    if (kind == KOLO_PROP_LEVEL) return adjust_level_property(level, field, delta);
+    if (kind == KOLO_PROP_PICKUP && index < level->pickup_count)
+        return adjust_pickup_property(&level->pickups[index], field, delta);
+    if (kind == KOLO_PROP_TREE && index < level->tree_count)
+        return adjust_tree_property(&level->trees[index], field, delta);
+    if (kind == KOLO_PROP_ANIMAL && index < level->animal_count)
+        return adjust_animal_property(level, index, field, delta);
+    return 0;
+}
+
+static int place_pickup(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
+{
+    KoloPickup *pickup;
+    if (level->pickup_count >= KOLO_MAX_PICKUPS) return 0;
+    pickup = &level->pickups[level->pickup_count++];
+    memset(pickup, 0, sizeof(*pickup));
+    pickup->id = id;
+    pickup->type = (u8)tool;
+    pickup->x = (u16)x;
+    pickup->y = (u16)y;
+    return 1;
+}
+
+static int place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
+{
+    KoloAnimalSpawn *animal;
+    if (level->animal_count >= KOLO_MAX_ENEMIES) return 0;
+    animal = &level->animals[level->animal_count++];
+    memset(animal, 0, sizeof(*animal));
+    animal->id = id;
+    animal->type = (u8)(tool - TOOL_ANIMAL_FIRST);
+    animal->x = (u16)x;
+    animal->y = (u16)y;
+    animal->min_x = (u16)(x > PATROL_HALF_WIDTH ? x - PATROL_HALF_WIDTH : 0);
+    animal->max_x = (u16)(x + PATROL_HALF_WIDTH < level->width
+                          ? x + PATROL_HALF_WIDTH : level->width - 1);
+    animal->tree_id = animal->dialogue_id = KOLO_NO_ID;
+    animal->climb_min = animal->climb_max = (u16)y;
+    return 1;
+}
+
+static int place_tree(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
+{
+    KoloTree *tree;
+    if (level->tree_count >= KOLO_MAX_TREES) return 0;
+    tree = &level->trees[level->tree_count++];
+    memset(tree, 0, sizeof(*tree));
+    tree->id = id;
+    tree->type = (u8)(tool - TOOL_TREE_FIRST);
+    tree->x = (u16)x;
+    tree->y = (u16)y;
+    tree->height = DEFAULT_TREE_HEIGHT;
+    return 1;
+}
+
+static int place_object(LevelData *level, unsigned x, unsigned y, unsigned tool)
+{
+    u16 id = next_object_id(level);
+    if (tool < TOOL_ANIMAL_FIRST) return place_pickup(level, x, y, tool, id);
+    if (tool < TOOL_TREE_FIRST) return place_animal(level, x, y, tool, id);
+    if (tool < TOOL_COUNT) return place_tree(level, x, y, tool, id);
+    return 0;
+}
+
+static void remove_encounters_for(LevelData *level, u16 animal_id)
+{
+    unsigned i = 0;
+    while (i < level->encounter_count) {
+        if (level->encounters[i].animal_id != animal_id) {
+            ++i;
+            continue;
+        }
+        memmove(&level->encounters[i], &level->encounters[i + 1],
+                (level->encounter_count - i - 1) * sizeof(KoloEncounter));
+        --level->encounter_count;
+    }
+}
+
+static int erase_object(LevelData *level, unsigned x, unsigned y)
+{
+    unsigned i;
+    for (i = 0; i < level->pickup_count; ++i)
+        if (level->pickups[i].x == x && level->pickups[i].y == y) {
+            memmove(&level->pickups[i], &level->pickups[i + 1],
+                    (level->pickup_count - i - 1) * sizeof(KoloPickup));
+            --level->pickup_count;
+            return 1;
+        }
+    for (i = 0; i < level->animal_count; ++i)
+        if (level->animals[i].x == x && level->animals[i].y == y) {
+            u16 id = level->animals[i].id;
+            memmove(&level->animals[i], &level->animals[i + 1],
+                    (level->animal_count - i - 1) * sizeof(KoloAnimalSpawn));
+            --level->animal_count;
+            remove_encounters_for(level, id);
+            return 1;
+        }
+    for (i = 0; i < level->tree_count; ++i)
+        if (level->trees[i].x == x && level->trees[i].y == y) {
+            u16 id = level->trees[i].id;
+            unsigned j;
+            memmove(&level->trees[i], &level->trees[i + 1],
+                    (level->tree_count - i - 1) * sizeof(KoloTree));
+            --level->tree_count;
+            for (j = 0; j < level->animal_count; ++j)
+                if (level->animals[j].tree_id == id) level->animals[j].tree_id = KOLO_NO_ID;
+            return 1;
+        }
+    return 0;
+}
+
+static void handle_property_modal(Editor *editor)
+{
+    PropertyModal *prop = &editor->prop;
+    unsigned count = kolo_property_field_count(prop->kind);
+    if (key_pressed(KEY_ESCAPE)) {
+        editor->assets.level = prop->backup;
+        prop->open = 0;
+        keyboard_clear_edges();
+        return;
+    }
+    if (key_pressed(KEY_ENTER)) {
+        prop->open = 0;
+        editor->dirty = 1;
+        keyboard_clear_edges();
+        return;
+    }
+    if (key_pressed(KEY_UP)) prop->field = prop->field ? prop->field - 1 : count - 1;
+    if (key_pressed(KEY_DOWN)) prop->field = (prop->field + 1) % count;
+    if (key_pressed(KEY_LEFT))
+        adjust_property(&editor->assets.level, prop->kind, prop->index, prop->field, -1);
+    if (key_pressed(KEY_RIGHT))
+        adjust_property(&editor->assets.level, prop->kind, prop->index, prop->field, 1);
+}
+
+static void open_property_modal(Editor *editor, unsigned kind, unsigned index)
+{
+    editor->prop.open = 1;
+    editor->prop.kind = kind;
+    editor->prop.index = index;
+    editor->prop.field = 0;
+    editor->prop.backup = editor->assets.level;
+    keyboard_clear_edges();
+}
+
+/* Returns 0 when the editor should close. */
+static int handle_exit_confirm(Editor *editor)
+{
+    if (key_pressed(KEY_ENTER)) {
+        if (level_save(&editor->assets.level, editor->filename,
+                       editor->error, sizeof(editor->error))) return 0;
+        editor->confirm_exit = 0;
+    } else if (key_pressed(KEY_DELETE)) {
+        return 0;
+    } else if (key_pressed(KEY_ESCAPE)) {
+        editor->confirm_exit = 0;
+    }
+    return 1;
+}
+
+static void move_cursor(Editor *editor)
+{
+    if (key_pressed(KEY_LEFT) && editor->cursor_x) --editor->cursor_x;
+    if (key_pressed(KEY_RIGHT) && editor->cursor_x + 1 < editor->assets.level.width)
+        ++editor->cursor_x;
+    if (key_pressed(KEY_UP) && editor->cursor_y) --editor->cursor_y;
+    if (key_pressed(KEY_DOWN) && editor->cursor_y + 1 < KOLO_LEVEL_HEIGHT)
+        ++editor->cursor_y;
+}
+
+static void paint_at_cursor(Editor *editor)
+{
+    LevelData *level = &editor->assets.level;
+    if (editor->layer == LAYER_TILE) {
+        level->map[editor->cursor_y * level->width + editor->cursor_x] = (u8)editor->tool;
+        editor->dirty = 1;
+    } else if (editor->layer == LAYER_OBJECT) {
+        if (place_object(level, editor->cursor_x, editor->cursor_y, editor->tool))
+            editor->dirty = 1;
+    } else {
+        level->start.x = (u16)editor->cursor_x;
+        level->start.y = (u16)editor->cursor_y;
+        editor->dirty = 1;
+    }
+}
+
+static void erase_at_cursor(Editor *editor)
+{
+    LevelData *level = &editor->assets.level;
+    if (editor->layer == LAYER_TILE) {
+        level->map[editor->cursor_y * level->width + editor->cursor_x] = KOLO_TILE_AIR;
+        editor->dirty = 1;
+    } else if (editor->layer == LAYER_OBJECT &&
+               erase_object(level, editor->cursor_x, editor->cursor_y)) {
+        editor->dirty = 1;
+    }
+}
+
+static void place_marker(Editor *editor, KoloPoint *marker)
+{
+    marker->x = (u16)editor->cursor_x;
+    marker->y = (u16)editor->cursor_y;
+    editor->dirty = 1;
+}
+
+static void handle_editing(Editor *editor)
+{
+    LevelData *level = &editor->assets.level;
+    if (key_pressed(KEY_F1)) {
+        editor->help = 1;
+        keyboard_clear_edges();
+    }
+    if (key_pressed(KEY_ESCAPE)) {
+        editor->confirm_exit = 1;
+        keyboard_clear_edges();
+    }
+    move_cursor(editor);
+    if (key_pressed(KEY_TAB)) editor->layer = (editor->layer + 1) % LAYER_COUNT;
+    if (key_pressed(KEY_PAGE_UP)) editor->tool = (editor->tool + 1) % TOOL_COUNT;
+    if (key_pressed(KEY_PAGE_DOWN))
+        editor->tool = editor->tool ? editor->tool - 1 : TOOL_COUNT - 1;
+    if (key_pressed(KEY_SPACE)) paint_at_cursor(editor);
+    if (key_pressed(KEY_DELETE)) erase_at_cursor(editor);
+    if (key_pressed(KEY_1)) place_marker(editor, &level->start);
+    if (key_pressed(KEY_2)) {
+        if (!level->checkpoint_count) level->checkpoint_count = 1;
+        place_marker(editor, &level->checkpoints[0]);
+    }
+    if (key_pressed(KEY_3)) place_marker(editor, &level->exit);
+    if (key_pressed(KEY_ENTER) && editor->layer == LAYER_OBJECT) {
+        unsigned kind, index;
+        if (find_object(level, editor->cursor_x, editor->cursor_y, &kind, &index))
+            open_property_modal(editor, kind, index);
+    }
+    if (key_pressed(KEY_F2) &&
+        level_save(level, editor->filename, editor->error, sizeof(editor->error)))
+        editor->dirty = 0;
+    if (key_pressed(KEY_F3))
+        editor->valid = level_validate(level, editor->error, sizeof(editor->error));
+    if (key_pressed(KEY_F4)) open_property_modal(editor, KOLO_PROP_LEVEL, 0);
+}
+
+static void render_editor(Editor *editor)
+{
+    /* The preview is rebuilt every frame because the editor mutates the level in
+     * place, and GameState caches spawn positions taken from it. */
+    game_init(&editor->preview, &editor->assets);
+    editor->preview.camera_x = (s32)(editor->cursor_x * KOLO_TILE_SIZE > KOLO_CAMERA_OFFSET
+        ? editor->cursor_x * KOLO_TILE_SIZE - KOLO_CAMERA_OFFSET : 0) << KOLO_FP_SHIFT;
+    if (editor->prop.open)
+        video_render_editor_properties(&editor->preview, editor->prop.kind,
+                                      editor->prop.index, editor->prop.field);
+    else if (editor->help)
+        video_render_editor_help(&editor->preview);
+    else if (editor->confirm_exit)
+        video_render_editor_exit(&editor->preview);
+    else
+        video_render_editor(&editor->preview, editor->cursor_x, editor->cursor_y,
+                           editor->layer, editor->tool, editor->dirty, editor->valid);
+    video_present();
 }
 
 static int editor_selftest(void)
 {
-    LevelData level,check,backup;KoloAnimalSpawn*a;KoloEncounter*e;char error[96];const char*path="EDITTEST.KLV";
-    remove(path);remove("EDITTEST.TMP");if(!make_blank(&level))return 0;
-    level.map[5*80+10]=3;level.checkpoint_count=1;level.checkpoints[0].x=20;level.checkpoints[0].y=8;
-    level.tree_count=1;level.trees[0].id=10;level.trees[0].type=KOLO_TREE_OAK;level.trees[0].x=55;level.trees[0].y=8;level.trees[0].height=4;
-    level.animal_count=2;a=&level.animals[1];memset(a,0,sizeof(*a));a->id=2;a->type=KOLO_ANIMAL_FOX;a->x=60;a->y=8;a->min_x=57;a->max_x=63;a->tree_id=a->dialogue_id=0xffff;a->climb_min=a->climb_max=8;
-    backup=level;adjust_property(&level,PROP_ANIMAL,1,0,1);level=backup;if(level.animals[1].type!=KOLO_ANIMAL_FOX)return 0;
-    adjust_property(&level,PROP_LEVEL,0,0,1);adjust_property(&level,PROP_LEVEL,0,1,-1);adjust_property(&level,PROP_LEVEL,0,2,1);
-    adjust_property(&level,PROP_ANIMAL,1,0,1);adjust_property(&level,PROP_ANIMAL,1,1,1);adjust_property(&level,PROP_ANIMAL,1,2,1);
-    adjust_property(&level,PROP_ANIMAL,1,3,1);adjust_property(&level,PROP_ANIMAL,1,4,1);adjust_property(&level,PROP_ANIMAL,1,5,-1);adjust_property(&level,PROP_ANIMAL,1,6,1);adjust_property(&level,PROP_ANIMAL,1,7,1);adjust_property(&level,PROP_ANIMAL,1,8,-1);adjust_property(&level,PROP_ANIMAL,1,9,1);
-    if(!level_save(&level,path,error,sizeof(error))){printf("KOLOEDIT SELFTEST FAIL %s\n",error);level_free(&level);return 0;}level_free(&level);
-    if(!level_load(&check,path,error,sizeof(error))){printf("KOLOEDIT SELFTEST FAIL %s\n",error);return 0;}a=&check.animals[1];e=encounter_for(&check,a->id,0);
-    if(check.map[5*80+10]!=3||check.checkpoint_count!=1||check.theme!=KOLO_THEME_FOREST||check.required_red!=0||check.cloud_seed!=2||a->type!=KOLO_ANIMAL_WOLF||a->flags!=1||a->dialogue_id!=1||a->min_x!=56||a->max_x!=64||a->tree_id!=10||a->climb_min!=7||a->climb_max!=9||!e||e->reward!=KOLO_REWARD_BLUE||e->correct!=1){level_free(&check);return 0;}
-    check.map[5*80+10]=0;check.checkpoint_count=0;if(!level_save(&check,path,error,sizeof(error))){level_free(&check);return 0;}level_free(&check);
-    if(!level_load(&check,path,error,sizeof(error))||check.map[5*80+10]!=0||check.checkpoint_count!=0){level_free(&check);return 0;}level_free(&check);
-    if(remove(path))return 0;puts("KOLOEDIT SELFTEST PASS create edit properties save reload delete");return 1;
+    const char *path = "EDITTEST.KLV";
+    LevelData level, check, backup;
+    KoloAnimalSpawn *animal;
+    KoloEncounter *encounter;
+    char error[ERROR_SIZE];
+    unsigned field;
+    remove(path);
+    remove("EDITTEST.TMP");
+    if (!make_blank(&level)) return 0;
+    level.map[5 * BLANK_WIDTH + 10] = KOLO_TILE_GRASS_PLATFORM;
+    level.checkpoint_count = 1;
+    level.checkpoints[0].x = 20;
+    level.checkpoints[0].y = 8;
+    level.tree_count = 1;
+    level.trees[0].id = 10;
+    level.trees[0].type = KOLO_TREE_OAK;
+    level.trees[0].x = 55;
+    level.trees[0].y = 8;
+    level.trees[0].height = 4;
+    level.animal_count = 2;
+    animal = &level.animals[1];
+    memset(animal, 0, sizeof(*animal));
+    animal->id = 2;
+    animal->type = KOLO_ANIMAL_FOX;
+    animal->x = 60;
+    animal->y = 8;
+    animal->min_x = 57;
+    animal->max_x = 63;
+    animal->tree_id = animal->dialogue_id = KOLO_NO_ID;
+    animal->climb_min = animal->climb_max = 8;
+
+    /* Escaping a property modal restores the level wholesale, so confirm a struct
+     * copy really does undo an edit before relying on it below. */
+    backup = level;
+    adjust_property(&level, KOLO_PROP_ANIMAL, 1, KOLO_ANIMAL_FIELD_SUBTYPE, 1);
+    level = backup;
+    if (level.animals[1].type != KOLO_ANIMAL_FOX) return 0;
+
+    adjust_property(&level, KOLO_PROP_LEVEL, 0, KOLO_LEVEL_FIELD_THEME, 1);
+    adjust_property(&level, KOLO_PROP_LEVEL, 0, KOLO_LEVEL_FIELD_REQUIRED_RED, -1);
+    adjust_property(&level, KOLO_PROP_LEVEL, 0, KOLO_LEVEL_FIELD_CLOUD_SEED, 1);
+    for (field = 0; field < KOLO_ANIMAL_FIELD_COUNT; ++field) {
+        int delta = field == KOLO_ANIMAL_FIELD_PATROL_LEFT ||
+                    field == KOLO_ANIMAL_FIELD_CLIMB_TOP ? -1 : 1;
+        adjust_property(&level, KOLO_PROP_ANIMAL, 1, field, delta);
+    }
+    if (!level_save(&level, path, error, sizeof(error))) {
+        printf("KOLOEDIT SELFTEST FAIL %s\n", error);
+        level_free(&level);
+        return 0;
+    }
+    level_free(&level);
+
+    if (!level_load(&check, path, error, sizeof(error))) {
+        printf("KOLOEDIT SELFTEST FAIL %s\n", error);
+        return 0;
+    }
+    animal = &check.animals[1];
+    encounter = encounter_for(&check, animal->id, 0);
+    if (check.map[5 * BLANK_WIDTH + 10] != KOLO_TILE_GRASS_PLATFORM ||
+        check.checkpoint_count != 1 || check.theme != KOLO_THEME_FOREST ||
+        check.required_red != 0 || check.cloud_seed != 2 ||
+        animal->type != KOLO_ANIMAL_WOLF || animal->flags != 1 ||
+        animal->dialogue_id != 1 || animal->min_x != 56 || animal->max_x != 64 ||
+        animal->tree_id != 10 || animal->climb_min != 7 || animal->climb_max != 9 ||
+        !encounter || encounter->reward != KOLO_REWARD_BLUE || encounter->correct != 1) {
+        level_free(&check);
+        return 0;
+    }
+
+    /* Saving a level that lost objects must shrink the payload, not leave stale
+     * records behind, so round-trip an erase as well as an edit. */
+    check.map[5 * BLANK_WIDTH + 10] = KOLO_TILE_AIR;
+    check.checkpoint_count = 0;
+    if (!level_save(&check, path, error, sizeof(error))) {
+        level_free(&check);
+        return 0;
+    }
+    level_free(&check);
+    if (!level_load(&check, path, error, sizeof(error)) ||
+        check.map[5 * BLANK_WIDTH + 10] != KOLO_TILE_AIR || check.checkpoint_count != 0) {
+        level_free(&check);
+        return 0;
+    }
+    level_free(&check);
+    if (remove(path)) return 0;
+    puts("KOLOEDIT SELFTEST PASS create edit properties save reload delete");
+    return 1;
 }
 
-int main(int argc,char**argv)
+static int prompt_for_filename(char *filename)
 {
-    char filename[80],error[96];AssetPack assets;GameState game;PropertyModal prop;unsigned cx=0,cy=0,layer=0,tool=1;int dirty=0,valid=1,running=1,confirm=0,help=0;
-    memset(&prop,0,sizeof(prop));if(argc>1&&!stricmp(argv[1],"-selftest"))return editor_selftest()?0:3;
-    if(argc>1)strncpy(filename,argv[1],sizeof(filename)-1);else{printf("Level filename (8.3): ");if(scanf("%79s",filename)!=1)return 2;}filename[sizeof(filename)-1]=0;
-    if(!valid_83(filename)){fprintf(stderr,"KOLOEDIT: filename must use 8.3 form\n");return 2;}
-    {FILE*probe=fopen(filename,"rb");if(probe){fclose(probe);if(!level_load(&assets.level,filename,error,sizeof(error))){fprintf(stderr,"KOLOEDIT: %s\n",error);return 2;}level_free(&assets.level);}else{LevelData blank;if(!make_blank(&blank)){fprintf(stderr,"KOLOEDIT: out of memory\n");return 2;}if(!level_save(&blank,filename,error,sizeof(error))){fprintf(stderr,"KOLOEDIT: %s\n",error);level_free(&blank);return 2;}level_free(&blank);}}
-    if(!assets_load_bank(&assets,"KOLOBOK.DAT","GARDEN",filename,error,sizeof(error))){fprintf(stderr,"KOLOEDIT: %s\n",error);return 2;}
-    if(!video_init(&assets)||!keyboard_install()){assets_free(&assets);fprintf(stderr,"KOLOEDIT: cannot initialize Mode X editor\n");return 4;}game_init(&game,&assets);
-    while(running){
-        if(prop.open){
-            if(key_pressed(KEY_ESCAPE)){assets.level=prop.backup;prop.open=0;keyboard_clear_edges();}
-            else if(key_pressed(KEY_ENTER)){prop.open=0;dirty=1;keyboard_clear_edges();}
-            else{if(key_pressed(KEY_UP))prop.field=prop.field?prop.field-1:property_count(prop.kind)-1;if(key_pressed(KEY_DOWN))prop.field=(prop.field+1)%property_count(prop.kind);if(key_pressed(KEY_LEFT))adjust_property(&assets.level,prop.kind,prop.index,prop.field,-1);if(key_pressed(KEY_RIGHT))adjust_property(&assets.level,prop.kind,prop.index,prop.field,1);}
-        }else if(help){if(key_pressed(KEY_F1)||key_pressed(KEY_ESCAPE)){help=0;keyboard_clear_edges();}}
-        else if(confirm){if(key_pressed(KEY_ENTER)){if(level_save(&assets.level,filename,error,sizeof(error)))running=0;else confirm=0;}else if(key_pressed(KEY_DELETE))running=0;else if(key_pressed(KEY_ESCAPE))confirm=0;}
-        else{
-            if(key_pressed(KEY_F1)){help=1;keyboard_clear_edges();}if(key_pressed(KEY_ESCAPE)){confirm=1;keyboard_clear_edges();}
-            if(key_pressed(KEY_LEFT)&&cx)--cx;if(key_pressed(KEY_RIGHT)&&cx+1<assets.level.width)++cx;if(key_pressed(KEY_UP)&&cy)--cy;if(key_pressed(KEY_DOWN)&&cy+1<11)++cy;
-            if(key_pressed(KEY_TAB))layer=(layer+1)%3;if(key_pressed(KEY_PAGE_UP))tool=(tool+1)%11;if(key_pressed(KEY_PAGE_DOWN))tool=tool?tool-1:10;
-            if(key_pressed(KEY_SPACE)){if(layer==0){assets.level.map[cy*assets.level.width+cx]=(u8)tool;dirty=1;}else if(layer==1){if(place_object(&assets,cx,cy,tool))dirty=1;}else{assets.level.start.x=(u16)cx;assets.level.start.y=(u16)cy;dirty=1;}}
-            if(key_pressed(KEY_DELETE)){if(layer==0){assets.level.map[cy*assets.level.width+cx]=0;dirty=1;}else if(layer==1&&erase_object(&assets.level,cx,cy))dirty=1;}
-            if(key_pressed(KEY_1)){assets.level.start.x=(u16)cx;assets.level.start.y=(u16)cy;dirty=1;}if(key_pressed(KEY_2)){if(!assets.level.checkpoint_count)assets.level.checkpoint_count=1;assets.level.checkpoints[0].x=(u16)cx;assets.level.checkpoints[0].y=(u16)cy;dirty=1;}if(key_pressed(KEY_3)){assets.level.exit.x=(u16)cx;assets.level.exit.y=(u16)cy;dirty=1;}
-            if(key_pressed(KEY_ENTER)&&layer==1&&find_object(&assets.level,cx,cy,&prop.kind,&prop.index)){prop.open=1;prop.field=0;prop.backup=assets.level;keyboard_clear_edges();}
-            if(key_pressed(KEY_F2)&&level_save(&assets.level,filename,error,sizeof(error)))dirty=0;if(key_pressed(KEY_F3))valid=level_validate(&assets.level,error,sizeof(error));if(key_pressed(KEY_F4)){prop.open=1;prop.kind=PROP_LEVEL;prop.index=0;prop.field=0;prop.backup=assets.level;keyboard_clear_edges();}
-        }
-        sync_aliases(&assets);game_init(&game,&assets);game.camera_x=(s32)((cx*16>153?cx*16-153:0))<<8;
-        if(prop.open)video_render_editor_properties(&game,prop.kind,prop.index,prop.field);else if(help)video_render_editor_help(&game);else if(confirm)video_render_editor_exit(&game);else video_render_editor(&game,cx,cy,layer,tool,dirty,valid);video_present();
+    printf("Level filename (8.3): ");
+    return scanf("%79s", filename) == 1;
+}
+
+/* Opening a name that does not exist yet creates a blank level on disk, so the
+ * editor always has something valid to load and save over. */
+static int ensure_level_file(const char *filename, char *error, unsigned error_size)
+{
+    LevelData level;
+    FILE *probe = fopen(filename, "rb");
+    if (probe) {
+        fclose(probe);
+        if (!level_load(&level, filename, error, error_size)) return 0;
+        level_free(&level);
+        return 1;
     }
-    keyboard_remove();video_shutdown();assets_free(&assets);return 0;
+    if (!make_blank(&level)) {
+        strncpy(error, "out of memory", error_size - 1);
+        error[error_size - 1] = 0;
+        return 0;
+    }
+    if (!level_save(&level, filename, error, error_size)) {
+        level_free(&level);
+        return 0;
+    }
+    level_free(&level);
+    return 1;
+}
+
+int main(int argc, char **argv)
+{
+    Editor editor;
+    int running = 1;
+    if (argc > 1 && !stricmp(argv[1], "-selftest")) return editor_selftest() ? 0 : 3;
+    memset(&editor, 0, sizeof(editor));
+    editor.tool = 1;
+    editor.valid = 1;
+    if (argc > 1) strncpy(editor.filename, argv[1], sizeof(editor.filename) - 1);
+    else if (!prompt_for_filename(editor.filename)) return 2;
+    editor.filename[sizeof(editor.filename) - 1] = 0;
+    if (!valid_83(editor.filename)) {
+        fprintf(stderr, "KOLOEDIT: filename must use 8.3 form\n");
+        return 2;
+    }
+    if (!ensure_level_file(editor.filename, editor.error, sizeof(editor.error))) {
+        fprintf(stderr, "KOLOEDIT: %s\n", editor.error);
+        return 2;
+    }
+    if (!assets_load_bank(&editor.assets, "KOLOBOK.DAT", "GARDEN", editor.filename,
+                          editor.error, sizeof(editor.error))) {
+        fprintf(stderr, "KOLOEDIT: %s\n", editor.error);
+        return 2;
+    }
+    if (!video_init(&editor.assets) || !keyboard_install()) {
+        assets_free(&editor.assets);
+        fprintf(stderr, "KOLOEDIT: cannot initialize Mode X editor\n");
+        return 4;
+    }
+    while (running) {
+        if (editor.prop.open) {
+            handle_property_modal(&editor);
+        } else if (editor.help) {
+            if (key_pressed(KEY_F1) || key_pressed(KEY_ESCAPE)) {
+                editor.help = 0;
+                keyboard_clear_edges();
+            }
+        } else if (editor.confirm_exit) {
+            running = handle_exit_confirm(&editor);
+        } else {
+            handle_editing(&editor);
+        }
+        render_editor(&editor);
+    }
+    keyboard_remove();
+    video_shutdown();
+    assets_free(&editor.assets);
+    return 0;
 }
