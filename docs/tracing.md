@@ -8,9 +8,10 @@ reasoning alone has repeatedly been wrong.
 ## Using it
 
 ```sh
-make dos-debug      # same executables, built with -dKOLO_TRACE
-make playtest       # a failing stage now prints its trace
-make dos            # back to a shipping build
+make dos-debug        # same executables, built with -dKOLO_TRACE
+make playtest         # a failing stage now prints its trace
+make trace-playtest   # also streams every record to the emulator log
+make dos              # back to a shipping build
 ```
 
 `make dos-debug` overwrites `build/KOLOBOK.EXE`, so rebuild with `make dos`
@@ -32,6 +33,42 @@ Two rules keep the shipping build working:
   `-Werror`, so the release build stops compiling.
 - Keep a record under 64 characters. Longer text is truncated, not overflowed;
   `vsnprintf` bounds every write.
+
+## Streaming to the emulator
+
+DOSBox-X exposes an integration I/O device at ports 0x28..0x2B, a guest-to-host
+channel whose register set includes `DOSBOX_ID_REG_DEBUG_OUT` (0xDEB0). When it
+is present, every record is also pushed there as it happens and appears in the
+emulator log as `Client debug message: ...`.
+
+```sh
+make trace-playtest     # traced build + dosbox-x-debug.conf
+grep "Client debug message" build/PLAY-EMU.LOG
+```
+
+This is not about speed — the ring already performs no I/O during a run. It buys
+two things the ring cannot:
+
+- **History that survives a hang.** The ring is only printed if execution
+  reaches the code that dumps it. A guest stuck in a loop, or killed by the
+  emulator's `-time-limit`, takes its ring with it. Streamed records are already
+  in the host log.
+- **No cap.** A full three-level playthrough streams around 270 records; the
+  ring holds the last 64.
+
+Three details worth knowing:
+
+- The device is disabled by default, which is why `dosbox-x-debug.conf` exists
+  and `dosbox-x.conf` is left alone. The performance gate must keep measuring an
+  unmodified machine, and DOSBox-X's own configuration calls this device
+  experimental.
+- Records end with a newline because the host accumulates characters and only
+  emits a log line when it sees one. Without it the log still works, but records
+  run together and break mid-token wherever the host buffer filled.
+- Nothing is written until the documented reset-and-identify handshake succeeds,
+  because on real hardware those ports are something else entirely. If the
+  handshake fails the trace silently falls back to ring-only, which is what
+  happens when a traced build is run against `dosbox-x.conf`.
 
 ## Why a ring rather than printing
 

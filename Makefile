@@ -1,4 +1,4 @@
-.PHONY: all assets levels toolchain dos dos-debug host-test perf-test playtest test run screenshot dist clean
+.PHONY: all assets levels toolchain dos dos-debug trace-playtest host-test perf-test playtest test run screenshot dist clean
 
 PYTHON ?= python3
 HOST_CC ?= gcc
@@ -44,6 +44,11 @@ host-test: build/test_game build/test_music
 	$(PYTHON) tools/assets.py --check
 	$(PYTHON) tests/test_levels.py
 	$(PYTHON) tests/test_balance.py
+
+# Traced playthrough against the debug machine profile, so each record also
+# streams to the emulator log (build/PLAY-EMU.LOG) as it happens.
+trace-playtest: dos-debug
+	KOLO_DOSBOX_CONF=$(CURDIR)/dosbox-x-debug.conf bash tools/dosbox-playtest.sh
 
 perf-test: dos
 	bash tools/dosbox-perf-test.sh
