@@ -35,9 +35,9 @@ against each other automatically:
 material tables at the bottom of `make_bank` assign behaviour by index, and
 `MATERIALS` in `tools/levels.py` maps each surface to its `(top, body, platform)`
 triple while pit floors are hard-coded to 4. Painting art into the wrong slot
-swaps two tiles in game without failing any test, which is how 3 and 4 came to
-be drawn as each other's graphics: platforms rendered as floating spikes and pit
-floors as inviting ledges.
+silently swaps two tiles in game without failing any test — a platform drawn into
+slot 4 renders as floating spikes and a pit floor drawn into slot 3 as an
+inviting ledge.
 
 ## KLV4
 

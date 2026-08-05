@@ -41,22 +41,14 @@ the 30 Hz gameplay deadline without baking one host's exact result into the test
 
 ## Measured results
 
-Measured with DOSBox-X 2026.01.02 and the pinned Open Watcom v2 2026-08-01 daily
-build:
-
-| Renderer and profile | Raw throughput | 30 Hz paced |
-| --- | ---: | ---: |
-| Original C renderer, 386DX-40 profile | 17.0 fps | not sustainable |
-| Mode 13h optimized framebuffer, 386DX-40 profile | 45.4–45.5 fps | 30.3 fps |
-| MVP planar Mode X renderer | 68.2 fps | 30.3 fps |
-| Expanded Deep Forest worst case | 57.4 fps | 30.3 fps |
-
-The expanded worst-case workload remains 91% above its 30 Hz frame deadline and
-14.8% above the raw regression floor while drawing the larger enemy set, three
-tree types, expanded HUD, and material art.
+The Deep Forest worst case measures 57.4 fps raw and 30.3 fps paced with
+DOSBox-X 2026.01.02 and the pinned Open Watcom v2 2026-08-01 daily build. That
+is 91% above the 30 Hz frame deadline and 14.8% above the raw regression floor
+while drawing the larger enemy set, three tree types, expanded HUD, and material
+art.
 
 CI reproduces the 57.4 fps figure exactly on `ubuntu-latest`, even though the
-runner installs an older DOSBox-X than the table was recorded with. The same
+runner installs an older DOSBox-X than the figure was recorded with. The same
 binary measures about 54.5 fps on an Apple Silicon host with a Homebrew
 DOSBox-X, so treat differences of a few frames per second between hosts as
 emulator variance rather than as a rendering change; the per-stage profile
@@ -67,9 +59,7 @@ against the current renderer, reports 454,318 background ticks, 417,439 tile
 ticks, 175,844 sprite ticks, 160,707 HUD ticks, and 1,051 presentation ticks.
 That averages about 6.35 ms, 5.83 ms, 2.46 ms, 2.25 ms, and 0.015 ms per frame,
 respectively. Game simulation, loop overhead, and profiler reads are outside or
-between those buckets. Presentation ticks were 997 before `video_present` was
-reordered to arm the flip ahead of the retrace that latches it; see
-[flicker-analysis.md](flicker-analysis.md).
+between those buckets.
 
 ## Optimized paths
 
@@ -102,6 +92,30 @@ reordered to arm the flip ahead of the retrace that latches it; see
 Mode X organization and latch-copy behavior follow Michael Abrash's discussion
 of unchained VGA and page flipping in the
 [Graphics Programming Black Book](https://www.phatcode.net/res/224/files/html/ch47/47-02.html).
+
+## Presentation timing caveats
+
+Three known limitations sit around the presentation path. None of them currently
+produce a visible artifact, but each will mislead anyone measuring or debugging
+frame timing.
+
+- Frame pacing is coarser than it looks. `wait_for_frame` (`src/main.cpp:45`)
+  paces on `clock()`, and the Watcom DOS headers define `CLOCKS_PER_SEC` as 1000
+  while the DOS runtime derives the value from the 18.2 Hz BIOS tick. The unit is
+  milliseconds but the real resolution is about 55 ms against a 33.3 ms deadline,
+  so deadlines are overshot in a repeating pattern and roughly one frame in three
+  is released with no wait. It still averages to the 30.3 fps the benchmark
+  reports. The 55 ms figure is inferred from the tick source, not measured on
+  target.
+- The visible-page assertions cannot catch a late CRTC latch. `video_vram_crc`
+  (`src/video.cpp`) reconstructs the page named by the `display_base` variable —
+  the software's belief about what is on screen, not what the CRTC is scanning.
+  Catching a late latch needs a read-back of the CRTC start address after a flip,
+  or a comparison against a DOSBox-X frame capture.
+- `output=surface` in `dosbox-x.conf` gives no host-side vsync, so DOSBox-X's own
+  blit to the host window can tear independently of anything the game does. That
+  shows up as a thin horizontal tear line rather than as element flicker;
+  `output=opengl` with `vsync=true` rules it out.
 
 ## Memory use
 

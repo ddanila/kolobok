@@ -115,9 +115,8 @@ python3 tools/levels.py import level.json LEVEL.KLV
 See [formats.md](docs/formats.md), [music.md](docs/music.md), and
 [performance.md](docs/performance.md) for the binary contracts, music
 provenance, and benchmark method.
-[flicker-analysis.md](docs/flicker-analysis.md) records the page-flip flicker
-investigation, [platform-reachability.md](docs/platform-reachability.md) covers
-jump height versus platform rows, and [tracing.md](docs/tracing.md) explains the
+[platform-reachability.md](docs/platform-reachability.md) covers jump height
+versus platform rows, and [tracing.md](docs/tracing.md) explains the
 `make dos-debug` ring-buffer log used to diagnose DOS-native failures.
 `docs/art-direction.png` is the pixel-art reference the tile and sprite work
 aims at. It is a target, not a capture: the shipped 320×200 renderer and its

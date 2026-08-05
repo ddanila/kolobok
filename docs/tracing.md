@@ -109,6 +109,6 @@ and another emulator run to establish.
 
 None. `KOLO_LOG`, `trace_reset` and `trace_dump` become void
 expressions, no symbols are emitted, and `trace.cpp` collapses to a single typedef
-because ISO C forbids an empty translation unit. Building the same source before
-and after this feature produced byte-identical executables, so the 386DX-40
-performance gate is measuring the same code it always was.
+because ISO C forbids an empty translation unit. A shipping build is therefore
+byte-identical to one built without the feature, so the 386DX-40 performance gate
+measures untraced code.
