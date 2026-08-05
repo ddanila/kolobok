@@ -1,7 +1,8 @@
 # 386DX-40 performance target
 
 Kolobok's performance regression runs inside the finished 16-bit DOS executable.
-The Linux host cross-compiles it first; DOSBox-X only executes the result.
+The Linux or macOS host cross-compiles it first; DOSBox-X only executes the
+result.
 
 ## Calibration
 

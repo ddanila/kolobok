@@ -6,3 +6,4 @@ dist/
 *.o
 *.core
 core
+__pycache__/

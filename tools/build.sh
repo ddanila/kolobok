@@ -2,10 +2,10 @@
 set -euo pipefail
 
 project_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-watcom_root="$project_root/.tools/watcom-linux"
+source "$project_root/tools/watcom-env.sh"
 export WATCOM="$watcom_root"
 export INCLUDE="$watcom_root/h"
-export PATH="$watcom_root/binl64:$PATH"
+export PATH="$watcom_root/$watcom_bindir:$PATH"
 
 mkdir -p "$project_root/build"
 rm -f "$project_root/build/KOLOBOK.EXE" "$project_root/build/KOLOEDIT.EXE" "$project_root/build/WATCOM.LOG"

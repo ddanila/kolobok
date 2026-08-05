@@ -8,8 +8,8 @@ Small Forest, and Deep Forest to a homecoming ending. Each level requires its
 red berries and a dialogue puzzle with its guardian.
 
 The game targets a 386DX-40, renders directly to planar 320×200×256 Mode X,
-and updates at 30 Hz. It is cross-compiled on Linux with Open Watcom; DOSBox-X
-only runs and verifies the completed DOS binaries.
+and updates at 30 Hz. It is cross-compiled on Linux or macOS with Open Watcom;
+DOSBox-X only runs and verifies the completed DOS binaries.
 
 ## Playing
 
@@ -43,8 +43,8 @@ suite.
 
 ## Build and test
 
-Install GNU Make, Bash, curl, unzip, Python 3 with Pillow, GCC, and DOSBox-X,
-then run:
+Install GNU Make, Bash, curl, unzip, Python 3 with Pillow, a C compiler, and
+DOSBox-X, then run:
 
 ```sh
 make
@@ -52,8 +52,11 @@ make test
 make dist
 ```
 
-The first build installs a pinned Linux-hosted Open Watcom toolchain under
-`.tools/`. `make test` runs host gameplay and state-machine tests, campaign
+The first build installs a pinned Open Watcom toolchain under `.tools/`,
+selected for the host by `tools/watcom-env.sh`. Linux x86-64 uses the published
+installer; macOS arm64 and x86-64 use the same release's `ow-snapshot.tar.xz`,
+because Open Watcom v2 builds macOS hosts in CI but does not publish a macOS
+installer. Both paths pin the same Open Watcom release. `make test` runs host gameplay and state-machine tests, campaign
 balance checks, KLV/archive JSON round-trips and CRC rejection, the AdLib mock
 register sink, DOS-native game/editor and visible-page safety self-tests, a
 complete deterministic three-level playthrough, and the 7,350-cycle Deep Forest
