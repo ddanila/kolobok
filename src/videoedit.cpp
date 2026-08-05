@@ -18,7 +18,7 @@ static const char *theme_name(u8 theme)
 }
 
 void video_render_editor(const GameState *game, unsigned cursor_x, unsigned cursor_y,
-                         unsigned layer, unsigned tool, int dirty, int valid)
+                         unsigned layer, unsigned tool, bool dirty, bool valid)
 {
     static const char *layers[3] = {"TILE", "OBJECT", "MARKER"};
     int camera = (int)(game->camera_x >> FP_SHIFT);

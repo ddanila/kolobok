@@ -26,14 +26,14 @@
 #define TOOL_ANIMAL_FIRST 4
 #define TOOL_TREE_FIRST 8
 
-int make_blank(LevelData *level);
-int valid_83(const char *name);
-int find_object(const LevelData *level, unsigned x, unsigned y,
-                unsigned *kind, unsigned *index);
-Encounter *encounter_for(LevelData *level, u16 animal_id, int create);
+bool make_blank(LevelData *level);
+bool valid_83(const char *name);
+bool find_object(const LevelData *level, unsigned x, unsigned y,
+                 unsigned *kind, unsigned *index);
+Encounter *encounter_for(LevelData *level, u16 animal_id, bool create);
 bool adjust_property(LevelData *level, unsigned kind, unsigned index,
                      unsigned field, int delta);
-int place_object(LevelData *level, unsigned x, unsigned y, unsigned tool);
-int erase_object(LevelData *level, unsigned x, unsigned y);
+bool place_object(LevelData *level, unsigned x, unsigned y, unsigned tool);
+bool erase_object(LevelData *level, unsigned x, unsigned y);
 
 #endif

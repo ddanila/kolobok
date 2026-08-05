@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int make_blank(LevelData *level)
+bool make_blank(LevelData *level)
 {
     unsigned x;
     memset(level, 0, sizeof(*level));
@@ -13,7 +13,7 @@ int make_blank(LevelData *level)
     level->required_red = 1;
     level->cloud_seed = 1;
     level->map = (u8 *)calloc(BLANK_WIDTH * LEVEL_HEIGHT, 1);
-    if (!level->map) return 0;
+    if (!level->map) return false;
     for (x = 0; x < BLANK_WIDTH; ++x) {
         level->map[BLANK_GROUND_ROW * BLANK_WIDTH + x] = Tile::GRASS_TOP;
         level->map[(BLANK_GROUND_ROW + 1) * BLANK_WIDTH + x] = Tile::GRASS_BODY;
@@ -48,25 +48,25 @@ int make_blank(LevelData *level)
     level->encounters[0].required = 1;
     level->encounters[0].correct = 1;
     level->encounters[0].retry_frames = DEFAULT_RETRY_FRAMES;
-    return 1;
+    return true;
 }
 
 /* Levels are saved next to the DOS executable, so the name has to survive an 8.3
  * filesystem: at most eight stem characters, one dot and three of extension. */
-int valid_83(const char *name)
+bool valid_83(const char *name)
 {
     const char *base = name, *p;
     unsigned stem = 0, ext = 0;
-    int seen_dot = 0;
+    bool seen_dot = false;
     for (p = name; *p; ++p)
         if (*p == '/' || *p == '\\') base = p + 1;
-    if (!*base) return 0;
+    if (!*base) return false;
     for (p = base; *p; ++p) {
         if (*p == '.') {
-            if (seen_dot) return 0;
-            seen_dot = 1;
+            if (seen_dot) return false;
+            seen_dot = true;
         } else if (*p == ' ' || *p == '/' || *p == '\\') {
-            return 0;
+            return false;
         } else if (seen_dot) {
             ++ext;
         } else {
@@ -76,16 +76,16 @@ int valid_83(const char *name)
     return stem > 0 && stem <= 8 && ext <= 3;
 }
 
-static int id_in_use(const LevelData *level, u16 id)
+static bool id_in_use(const LevelData *level, u16 id)
 {
     unsigned i;
     for (i = 0; i < level->pickup_count; ++i)
-        if (level->pickups[i].id == id) return 1;
+        if (level->pickups[i].id == id) return true;
     for (i = 0; i < level->animal_count; ++i)
-        if (level->animals[i].id == id) return 1;
+        if (level->animals[i].id == id) return true;
     for (i = 0; i < level->tree_count; ++i)
-        if (level->trees[i].id == id) return 1;
-    return 0;
+        if (level->trees[i].id == id) return true;
+    return false;
 }
 
 /* Pickups, animals and trees draw from one ID space. level_validate only rejects
@@ -99,12 +99,12 @@ static u16 next_object_id(const LevelData *level)
     return id;
 }
 
-static int encounter_id_in_use(const LevelData *level, u16 id)
+static bool encounter_id_in_use(const LevelData *level, u16 id)
 {
     unsigned i;
     for (i = 0; i < level->encounter_count; ++i)
-        if (level->encounters[i].id == id) return 1;
-    return 0;
+        if (level->encounters[i].id == id) return true;
+    return false;
 }
 
 static u16 next_encounter_id(const LevelData *level)
@@ -114,7 +114,7 @@ static u16 next_encounter_id(const LevelData *level)
     return id;
 }
 
-Encounter *encounter_for(LevelData *level, u16 animal_id, int create)
+Encounter *encounter_for(LevelData *level, u16 animal_id, bool create)
 {
     const AnimalSpawn *animal = 0;
     Encounter *encounter;
@@ -134,29 +134,29 @@ Encounter *encounter_for(LevelData *level, u16 animal_id, int create)
     return encounter;
 }
 
-int find_object(const LevelData *level, unsigned x, unsigned y,
-                       unsigned *kind, unsigned *index)
+bool find_object(const LevelData *level, unsigned x, unsigned y,
+                 unsigned *kind, unsigned *index)
 {
     unsigned i;
     for (i = 0; i < level->pickup_count; ++i)
         if (level->pickups[i].x == x && level->pickups[i].y == y) {
             *kind = PropertyKind::PICKUP;
             *index = i;
-            return 1;
+            return true;
         }
     for (i = 0; i < level->animal_count; ++i)
         if (level->animals[i].x == x && level->animals[i].y == y) {
             *kind = PropertyKind::ANIMAL;
             *index = i;
-            return 1;
+            return true;
         }
     for (i = 0; i < level->tree_count; ++i)
         if (level->trees[i].x == x && level->trees[i].y == y) {
             *kind = PropertyKind::TREE;
             *index = i;
-            return 1;
+            return true;
         }
-    return 0;
+    return false;
 }
 
 /* The property panel only ever nudges one field by one step, so each kind of
@@ -259,17 +259,17 @@ static bool adjust_animal_property(LevelData *level, unsigned index,
         animal->dialogue_id = (u16)wrapped(animal->dialogue_id == NO_ID
                                                ? 1 : (long)animal->dialogue_id + delta,
                                            1, MAX_DIALOGUE_ID);
-        encounter = encounter_for(level, animal->id, 1);
+        encounter = encounter_for(level, animal->id, true);
         if (encounter) encounter->dialogue_id = (u8)animal->dialogue_id;
         break;
     case AnimalField::REWARD:
-        encounter = encounter_for(level, animal->id, 1);
+        encounter = encounter_for(level, animal->id, true);
         if (!encounter) return false;
         cycle(encounter->reward, delta, Reward::COUNT);
         animal->flags |= 1;
         break;
     case AnimalField::ANSWER:
-        encounter = encounter_for(level, animal->id, 1);
+        encounter = encounter_for(level, animal->id, true);
         if (!encounter) return false;
         cycle(encounter->correct, delta, ANSWER_COUNT);
         animal->flags |= 1;
@@ -306,23 +306,23 @@ bool adjust_property(LevelData *level, unsigned kind, unsigned index,
     return false;
 }
 
-static int place_pickup(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
+static bool place_pickup(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
     Pickup *pickup;
-    if (level->pickup_count >= MAX_PICKUPS) return 0;
+    if (level->pickup_count >= MAX_PICKUPS) return false;
     pickup = &level->pickups[level->pickup_count++];
     memset(pickup, 0, sizeof(*pickup));
     pickup->id = id;
     pickup->type = (u8)tool;
     pickup->x = (u16)x;
     pickup->y = (u16)y;
-    return 1;
+    return true;
 }
 
-static int place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
+static bool place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
     AnimalSpawn *animal;
-    if (level->animal_count >= MAX_ENEMIES) return 0;
+    if (level->animal_count >= MAX_ENEMIES) return false;
     animal = &level->animals[level->animal_count++];
     memset(animal, 0, sizeof(*animal));
     animal->id = id;
@@ -334,13 +334,13 @@ static int place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool,
                           ? x + PATROL_HALF_WIDTH : level->width - 1);
     animal->tree_id = animal->dialogue_id = NO_ID;
     animal->climb_min = animal->climb_max = (u16)y;
-    return 1;
+    return true;
 }
 
-static int place_tree(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
+static bool place_tree(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
     Tree *tree;
-    if (level->tree_count >= MAX_TREES) return 0;
+    if (level->tree_count >= MAX_TREES) return false;
     tree = &level->trees[level->tree_count++];
     memset(tree, 0, sizeof(*tree));
     tree->id = id;
@@ -348,16 +348,16 @@ static int place_tree(LevelData *level, unsigned x, unsigned y, unsigned tool, u
     tree->x = (u16)x;
     tree->y = (u16)y;
     tree->height = DEFAULT_TREE_HEIGHT;
-    return 1;
+    return true;
 }
 
-int place_object(LevelData *level, unsigned x, unsigned y, unsigned tool)
+bool place_object(LevelData *level, unsigned x, unsigned y, unsigned tool)
 {
     u16 id = next_object_id(level);
     if (tool < TOOL_ANIMAL_FIRST) return place_pickup(level, x, y, tool, id);
     if (tool < TOOL_TREE_FIRST) return place_animal(level, x, y, tool, id);
     if (tool < TOOL_COUNT) return place_tree(level, x, y, tool, id);
-    return 0;
+    return false;
 }
 
 static void remove_encounters_for(LevelData *level, u16 animal_id)
@@ -374,7 +374,7 @@ static void remove_encounters_for(LevelData *level, u16 animal_id)
     }
 }
 
-int erase_object(LevelData *level, unsigned x, unsigned y)
+bool erase_object(LevelData *level, unsigned x, unsigned y)
 {
     unsigned i;
     for (i = 0; i < level->pickup_count; ++i)
@@ -382,7 +382,7 @@ int erase_object(LevelData *level, unsigned x, unsigned y)
             memmove(&level->pickups[i], &level->pickups[i + 1],
                     (level->pickup_count - i - 1) * sizeof(Pickup));
             --level->pickup_count;
-            return 1;
+            return true;
         }
     for (i = 0; i < level->animal_count; ++i)
         if (level->animals[i].x == x && level->animals[i].y == y) {
@@ -391,7 +391,7 @@ int erase_object(LevelData *level, unsigned x, unsigned y)
                     (level->animal_count - i - 1) * sizeof(AnimalSpawn));
             --level->animal_count;
             remove_encounters_for(level, id);
-            return 1;
+            return true;
         }
     for (i = 0; i < level->tree_count; ++i)
         if (level->trees[i].x == x && level->trees[i].y == y) {
@@ -402,7 +402,7 @@ int erase_object(LevelData *level, unsigned x, unsigned y)
             --level->tree_count;
             for (j = 0; j < level->animal_count; ++j)
                 if (level->animals[j].tree_id == id) level->animals[j].tree_id = NO_ID;
-            return 1;
+            return true;
         }
-    return 0;
+    return false;
 }

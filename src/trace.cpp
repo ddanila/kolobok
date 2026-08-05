@@ -96,7 +96,7 @@ static void id_debug_message(const char *text)
     outp(ID_COMMAND, ID_CMD_FLUSH_WRITE);
 }
 
-int trace_host_channel(void)
+bool trace_host_channel(void)
 {
     if (id_state < 0) id_state = id_probe();
     return id_state > 0;
@@ -106,7 +106,7 @@ int trace_host_channel(void)
 
 static void id_debug_message(const char *text) { (void)text; }
 
-int trace_host_channel(void) { return 0; }
+bool trace_host_channel(void) { return false; }
 
 #endif
 

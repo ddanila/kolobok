@@ -7,8 +7,8 @@
 static volatile unsigned char keys[128];
 static volatile unsigned char edges[128];
 static void (__interrupt __far *old_keyboard)(void);
-static int keyboard_active;
-static int sound_enabled;
+static bool keyboard_active;
+static bool sound_enabled;
 static unsigned sound_frames;
 
 static void __interrupt __far keyboard_handler(void)
@@ -30,17 +30,17 @@ static void __interrupt __far keyboard_handler(void)
     outp(0x20, 0x20);
 }
 
-int keyboard_install(void)
+bool keyboard_install(void)
 {
     memset((void *)keys, 0, sizeof(keys));
     memset((void *)edges, 0, sizeof(edges));
     old_keyboard = _dos_getvect(9);
-    if (old_keyboard == NULL) return 0;
+    if (old_keyboard == NULL) return false;
     _disable();
     _dos_setvect(9, keyboard_handler);
     _enable();
-    keyboard_active = 1;
-    return 1;
+    keyboard_active = true;
+    return true;
 }
 
 void keyboard_remove(void)
@@ -49,18 +49,18 @@ void keyboard_remove(void)
     _disable();
     _dos_setvect(9, old_keyboard);
     _enable();
-    keyboard_active = 0;
+    keyboard_active = false;
 }
 
-int key_down(unsigned scan)
+bool key_down(unsigned scan)
 {
-    return scan < 128 ? keys[scan] != 0 : 0;
+    return scan < 128 ? keys[scan] != 0 : false;
 }
 
-int key_pressed(unsigned scan)
+bool key_pressed(unsigned scan)
 {
-    int result;
-    if (scan >= 128) return 0;
+    bool result;
+    if (scan >= 128) return false;
     _disable();
     result = edges[scan] != 0;
     edges[scan] = 0;
@@ -75,7 +75,7 @@ void keyboard_clear_edges(void)
     _enable();
 }
 
-void speaker_init(int enabled)
+void speaker_init(bool enabled)
 {
     sound_enabled = enabled;
     sound_frames = 0;

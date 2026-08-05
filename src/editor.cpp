@@ -14,7 +14,7 @@
 enum Layer { LAYER_TILE, LAYER_OBJECT, LAYER_MARKER, LAYER_COUNT };
 
 typedef struct PropertyModal {
-    int open;
+    bool open;
     unsigned kind, index, field;
     LevelData backup;
 } PropertyModal;
@@ -24,7 +24,7 @@ typedef struct Editor {
     GameState preview;
     PropertyModal prop;
     unsigned cursor_x, cursor_y, layer, tool;
-    int dirty, valid, help, confirm_exit;
+    bool dirty, valid, help, confirm_exit;
     char filename[FILENAME_MAX_LEN];
     Error error;
 } Editor;
@@ -35,13 +35,13 @@ static void handle_property_modal(Editor *editor)
     unsigned count = assets_property_field_count(prop->kind);
     if (key_pressed(Key::ESCAPE)) {
         editor->assets.level = prop->backup;
-        prop->open = 0;
+        prop->open = false;
         keyboard_clear_edges();
         return;
     }
     if (key_pressed(Key::ENTER)) {
-        prop->open = 0;
-        editor->dirty = 1;
+        prop->open = false;
+        editor->dirty = true;
         keyboard_clear_edges();
         return;
     }
@@ -55,7 +55,7 @@ static void handle_property_modal(Editor *editor)
 
 static void open_property_modal(Editor *editor, unsigned kind, unsigned index)
 {
-    editor->prop.open = 1;
+    editor->prop.open = true;
     editor->prop.kind = kind;
     editor->prop.index = index;
     editor->prop.field = 0;
@@ -63,19 +63,19 @@ static void open_property_modal(Editor *editor, unsigned kind, unsigned index)
     keyboard_clear_edges();
 }
 
-/* Returns 0 when the editor should close. */
-static int handle_exit_confirm(Editor *editor)
+/* False when the editor should close. */
+static bool handle_exit_confirm(Editor *editor)
 {
     if (key_pressed(Key::ENTER)) {
         if (level_save(&editor->assets.level, editor->filename, editor->error))
-            return 0;
-        editor->confirm_exit = 0;
+            return false;
+        editor->confirm_exit = false;
     } else if (key_pressed(Key::DELETE)) {
-        return 0;
+        return false;
     } else if (key_pressed(Key::ESCAPE)) {
-        editor->confirm_exit = 0;
+        editor->confirm_exit = false;
     }
-    return 1;
+    return true;
 }
 
 static void move_cursor(Editor *editor)
@@ -93,14 +93,14 @@ static void paint_at_cursor(Editor *editor)
     LevelData *level = &editor->assets.level;
     if (editor->layer == LAYER_TILE) {
         level->map[editor->cursor_y * level->width + editor->cursor_x] = (u8)editor->tool;
-        editor->dirty = 1;
+        editor->dirty = true;
     } else if (editor->layer == LAYER_OBJECT) {
         if (place_object(level, editor->cursor_x, editor->cursor_y, editor->tool))
-            editor->dirty = 1;
+            editor->dirty = true;
     } else {
         level->start.x = (u16)editor->cursor_x;
         level->start.y = (u16)editor->cursor_y;
-        editor->dirty = 1;
+        editor->dirty = true;
     }
 }
 
@@ -109,10 +109,10 @@ static void erase_at_cursor(Editor *editor)
     LevelData *level = &editor->assets.level;
     if (editor->layer == LAYER_TILE) {
         level->map[editor->cursor_y * level->width + editor->cursor_x] = Tile::AIR;
-        editor->dirty = 1;
+        editor->dirty = true;
     } else if (editor->layer == LAYER_OBJECT &&
                erase_object(level, editor->cursor_x, editor->cursor_y)) {
-        editor->dirty = 1;
+        editor->dirty = true;
     }
 }
 
@@ -120,18 +120,18 @@ static void place_marker(Editor *editor, Point *marker)
 {
     marker->x = (u16)editor->cursor_x;
     marker->y = (u16)editor->cursor_y;
-    editor->dirty = 1;
+    editor->dirty = true;
 }
 
 static void handle_editing(Editor *editor)
 {
     LevelData *level = &editor->assets.level;
     if (key_pressed(Key::F1)) {
-        editor->help = 1;
+        editor->help = true;
         keyboard_clear_edges();
     }
     if (key_pressed(Key::ESCAPE)) {
-        editor->confirm_exit = 1;
+        editor->confirm_exit = true;
         keyboard_clear_edges();
     }
     move_cursor(editor);
@@ -153,7 +153,7 @@ static void handle_editing(Editor *editor)
             open_property_modal(editor, kind, index);
     }
     if (key_pressed(Key::F2) && level_save(level, editor->filename, editor->error))
-        editor->dirty = 0;
+        editor->dirty = false;
     if (key_pressed(Key::F3))
         editor->valid = level_validate(level, editor->error);
     if (key_pressed(Key::F4)) open_property_modal(editor, PropertyKind::LEVEL, 0);
@@ -179,7 +179,7 @@ static void render_editor(Editor *editor)
     video_present();
 }
 
-static int editor_selftest(void)
+static bool editor_selftest(void)
 {
     const char *path = "EDITTEST.KLV";
     LevelData level, check, backup;
@@ -189,7 +189,7 @@ static int editor_selftest(void)
     unsigned field;
     remove(path);
     remove("EDITTEST.TMP");
-    if (!make_blank(&level)) return 0;
+    if (!make_blank(&level)) return false;
     level.map[5 * BLANK_WIDTH + 10] = Tile::GRASS_PLATFORM;
     level.checkpoint_count = 1;
     level.checkpoints[0].x = 20;
@@ -217,7 +217,7 @@ static int editor_selftest(void)
     backup = level;
     adjust_property(&level, PropertyKind::ANIMAL, 1, AnimalField::SUBTYPE, 1);
     level = backup;
-    if (level.animals[1].type != AnimalType::FOX) return 0;
+    if (level.animals[1].type != AnimalType::FOX) return false;
 
     adjust_property(&level, PropertyKind::LEVEL, 0, LevelField::THEME, 1);
     adjust_property(&level, PropertyKind::LEVEL, 0, LevelField::REQUIRED_RED, -1);
@@ -230,13 +230,13 @@ static int editor_selftest(void)
     if (!level_save(&level, path, error)) {
         printf("KOLOEDIT SELFTEST FAIL %s\n", error.message());
         level_free(&level);
-        return 0;
+        return false;
     }
     level_free(&level);
 
     if (!level_load(&check, path, error)) {
         printf("KOLOEDIT SELFTEST FAIL %s\n", error.message());
-        return 0;
+        return false;
     }
     animal = &check.animals[1];
     encounter = encounter_for(&check, animal->id, 0);
@@ -248,7 +248,7 @@ static int editor_selftest(void)
         animal->tree_id != 10 || animal->climb_min != 7 || animal->climb_max != 9 ||
         !encounter || encounter->reward != Reward::BLUE || encounter->correct != 1) {
         level_free(&check);
-        return 0;
+        return false;
     }
 
     /* Saving a level that lost objects must shrink the payload, not leave stale
@@ -257,21 +257,21 @@ static int editor_selftest(void)
     check.checkpoint_count = 0;
     if (!level_save(&check, path, error)) {
         level_free(&check);
-        return 0;
+        return false;
     }
     level_free(&check);
     if (!level_load(&check, path, error) ||
         check.map[5 * BLANK_WIDTH + 10] != Tile::AIR || check.checkpoint_count != 0) {
         level_free(&check);
-        return 0;
+        return false;
     }
     level_free(&check);
-    if (remove(path)) return 0;
+    if (remove(path)) return false;
     puts("KOLOEDIT SELFTEST PASS create edit properties save reload delete");
-    return 1;
+    return true;
 }
 
-static int prompt_for_filename(char *filename)
+static bool prompt_for_filename(char *filename)
 {
     printf("Level filename (8.3): ");
     return scanf("%79s", filename) == 1;
@@ -301,11 +301,11 @@ static bool ensure_level_file(const char *filename, Error &error)
 int main(int argc, char **argv)
 {
     Editor editor;
-    int running = 1;
+    bool running = true;
     if (argc > 1 && !stricmp(argv[1], "-selftest")) return editor_selftest() ? 0 : 3;
     memset(&editor, 0, sizeof(editor));
     editor.tool = 1;
-    editor.valid = 1;
+    editor.valid = true;
     if (argc > 1) strncpy(editor.filename, argv[1], sizeof(editor.filename) - 1);
     else if (!prompt_for_filename(editor.filename)) return 2;
     editor.filename[sizeof(editor.filename) - 1] = 0;
@@ -332,7 +332,7 @@ int main(int argc, char **argv)
             handle_property_modal(&editor);
         } else if (editor.help) {
             if (key_pressed(Key::F1) || key_pressed(Key::ESCAPE)) {
-                editor.help = 0;
+                editor.help = false;
                 keyboard_clear_edges();
             }
         } else if (editor.confirm_exit) {

@@ -28,7 +28,7 @@ void trace_dump(const char *reason);
 /* Non-zero when DOSBox-X's integration device answered its handshake, in which
  * case every record is also streamed to the emulator log as it happens. That
  * history is unbounded and survives a guest that hangs before it can dump. */
-int trace_host_channel(void);
+bool trace_host_channel(void);
 
 #define KOLO_LOG(args) trace_record args
 
@@ -36,7 +36,7 @@ int trace_host_channel(void);
 
 #define trace_reset() ((void)0)
 #define trace_dump(reason) ((void)0)
-#define trace_host_channel() (0)
+#define trace_host_channel() (false)
 #define KOLO_LOG(args) ((void)0)
 
 #endif

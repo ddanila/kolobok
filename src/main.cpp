@@ -35,7 +35,7 @@ static const char *bank_names[Stage::COUNT] = {"GARDEN", "FOREST", "DEEP"};
 static const char *level_names[Stage::COUNT] = {"GARDEN.KLV", "SFOREST.KLV", "DFOREST.KLV"};
 static const unsigned stage_music[Stage::COUNT] = {Track::GARDEN, Track::FOREST, Track::DEEP};
 
-static int sound_on = 1;
+static bool sound_on = true;
 
 static int abs_int(int value) { return value < 0 ? -value : value; }
 
@@ -67,20 +67,20 @@ static void play_events(unsigned events)
     else if (events & Event::JUMP) speaker_play(440, 3);
 }
 
-static int load_stage(AssetPack *assets, unsigned stage, Error &error)
+static bool load_stage(AssetPack *assets, unsigned stage, Error &error)
 {
     return assets_load_bank(assets, ARCHIVE_PATH, bank_names[stage],
                             level_names[stage], error);
 }
 
 /* The title and intro use the garden map with the INTRO bank's palette. */
-static int load_title(AssetPack *assets, Error &error)
+static bool load_title(AssetPack *assets, Error &error)
 {
     return assets_load_bank(assets, ARCHIVE_PATH, "INTRO",
                             level_names[Stage::GARDEN], error);
 }
 
-static int selftest_metadata(const AssetPack *assets)
+static bool selftest_metadata(const AssetPack *assets)
 {
     return assets->level.width == 96 && assets->level.height == LEVEL_HEIGHT &&
            assets->level.required_red == 6 && assets_far_memory_active(assets);
@@ -88,7 +88,7 @@ static int selftest_metadata(const AssetPack *assets)
 
 /* Leaves `game` rolling right with a boost active, which is also the state the
  * page-flip checks below render, so the reported CRC covers a moving frame. */
-static int selftest_gameplay(const AssetPack *assets, GameState *game)
+static bool selftest_gameplay(const AssetPack *assets, GameState *game)
 {
     GameInput input;
     unsigned i;
@@ -97,15 +97,15 @@ static int selftest_gameplay(const AssetPack *assets, GameState *game)
     input.right = 1;
     for (i = 0; i < 30; ++i) game_step(game, &input);
     if (game->player.vx <= 0 || game->player.hp != FULL_HP ||
-        game->player.lives != DEFAULT_LIVES) return 0;
+        game->player.lives != DEFAULT_LIVES) return false;
     game_apply_pickup(game, PickupType::BLUE);
-    if (game->blue_timer != BLUE_FRAMES) return 0;
+    if (game->blue_timer != BLUE_FRAMES) return false;
     game->player.hp = 50;
     game_apply_pickup(game, PickupType::SMALL_PIE);
     return game->player.hp == FULL_HP && game->player.lives == DEFAULT_LIVES;
 }
 
-static int selftest_codewords(void)
+static bool selftest_codewords(void)
 {
     return campaign_codeword_stage("repka") == Stage::GARDEN &&
            campaign_codeword_stage("TEREMOK") == Stage::FOREST &&
@@ -113,7 +113,7 @@ static int selftest_codewords(void)
            campaign_codeword_stage("NOPE") < 0;
 }
 
-static int selftest_track(unsigned track)
+static bool selftest_track(unsigned track)
 {
     unsigned i;
     music_play(track);
@@ -122,32 +122,32 @@ static int selftest_track(unsigned track)
            music_debug_voice_mask() == 0x3f;
 }
 
-static int selftest_music(void)
+static bool selftest_music(void)
 {
-    if (!music_init(1) || !music_is_detected()) return 0;
+    if (!music_init(true) || !music_is_detected()) return false;
     if (!selftest_track(Track::GARDEN) || !selftest_track(Track::DEEP)) {
         music_shutdown();
-        return 0;
+        return false;
     }
     music_shutdown();
-    return 1;
+    return true;
 }
 
 /* Rendering must never touch the page being scanned out. Each check renders one
  * screen and confirms the visible page is byte-identical until video_present
  * flips to the page that was just built. */
-static int page_untouched(u32 visible, const char *screen)
+static bool page_untouched(u32 visible, const char *screen)
 {
-    if (video_vram_crc() == visible) return 1;
+    if (video_vram_crc() == visible) return true;
     printf("KOLOBOK SELFTEST FAIL visible %s page modified before present\n", screen);
-    return 0;
+    return false;
 }
 
-static int selftest_video_pages(const AssetPack *assets, const GameState *game,
+static bool selftest_video_pages(const AssetPack *assets, const GameState *game,
                                 u32 *first, u32 *second)
 {
     u32 visible, rendered, menu_a, menu_b, code_good, code_bad;
-    video_vsync_enable(0);
+    video_vsync_enable(false);
 
     video_render_menu(assets, 0);
     video_present();
@@ -157,58 +157,58 @@ static int selftest_video_pages(const AssetPack *assets, const GameState *game,
     rendered = video_frame_crc();
     if (menu_b != menu_a || rendered == menu_a) {
         puts("KOLOBOK SELFTEST FAIL visible title page modified before present");
-        return 0;
+        return false;
     }
     video_present();
     if (video_vram_crc() != rendered) {
         puts("KOLOBOK SELFTEST FAIL hidden title page was not presented");
-        return 0;
+        return false;
     }
 
     visible = video_vram_crc();
     video_render_game(game);
-    if (!page_untouched(visible, "game")) return 0;
+    if (!page_untouched(visible, "game")) return false;
     video_present();
     *first = video_vram_crc();
 
     video_render_game(game);
-    if (!page_untouched(*first, "alternating game")) return 0;
+    if (!page_untouched(*first, "alternating game")) return false;
     video_present();
     *second = video_vram_crc();
-    if (*first != *second || !video_display_state_valid()) return 0;
+    if (*first != *second || !video_display_state_valid()) return false;
 
     visible = video_vram_crc();
     video_render_dialogue(game, 1);
-    if (!page_untouched(visible, "dialogue")) return 0;
+    if (!page_untouched(visible, "dialogue")) return false;
     video_present();
-    if (video_frame_crc() != video_vram_crc()) return 0;
+    if (video_frame_crc() != video_vram_crc()) return false;
 
     visible = video_vram_crc();
     video_render_codeword(assets, "REPKA", 0);
-    if (!page_untouched(visible, "codeword")) return 0;
+    if (!page_untouched(visible, "codeword")) return false;
     video_present();
     code_good = video_vram_crc();
 
     video_render_codeword(assets, "WRONG", 1);
-    if (!page_untouched(code_good, "alternating codeword")) return 0;
+    if (!page_untouched(code_good, "alternating codeword")) return false;
     video_present();
     code_bad = video_vram_crc();
     return code_good != code_bad && video_frame_crc() == video_vram_crc();
 }
 
-static int selftest(AssetPack *assets)
+static bool selftest(AssetPack *assets)
 {
     GameState game;
     u32 first = 0, second = 0;
-    int passed;
+    bool passed;
     if (!selftest_metadata(assets) || !selftest_gameplay(assets, &game) ||
-        !selftest_codewords() || !selftest_music()) return 0;
-    if (!video_init(assets)) return 0;
+        !selftest_codewords() || !selftest_music()) return false;
+    if (!video_init(assets)) return false;
     passed = selftest_video_pages(assets, &game, &first, &second);
     video_shutdown();
-    if (!passed) return 0;
+    if (!passed) return false;
     printf("KOLOBOK SELFTEST PASS CRC=%08lX VRAM=%08lX\n", first, second);
-    return 1;
+    return true;
 }
 
 /* Sweeping the camera over the map by a stride coprime with the map width keeps
@@ -229,7 +229,7 @@ static unsigned long fps_times_ten(clock_t elapsed)
     return (unsigned long)BENCH_FRAMES * CLOCKS_PER_SEC * 10UL / (unsigned long)elapsed;
 }
 
-static int benchmark(AssetPack *assets)
+static bool benchmark(AssetPack *assets)
 {
     GameState game;
     GameInput input;
@@ -240,8 +240,8 @@ static int benchmark(AssetPack *assets)
     game_init(&game, assets);
     memset(&input, 0, sizeof(input));
     input.right = 1;
-    if (!video_init(assets)) return 0;
-    video_vsync_enable(0);
+    if (!video_init(assets)) return false;
+    video_vsync_enable(false);
     video_render_game(&game);
     video_present();
 
@@ -254,7 +254,7 @@ static int benchmark(AssetPack *assets)
     }
     elapsed = clock() - started;
 
-    video_vsync_enable(1);
+    video_vsync_enable(true);
     paced_started = clock();
     next = paced_started;
     for (frame = 0; frame < BENCH_FRAMES; ++frame) {
@@ -266,15 +266,15 @@ static int benchmark(AssetPack *assets)
     }
     paced_elapsed = clock() - paced_started;
 
-    video_vsync_enable(0);
+    video_vsync_enable(false);
     video_profile_reset();
-    video_profile_enable(1);
+    video_profile_enable(true);
     for (frame = 0; frame < BENCH_FRAMES; ++frame) {
         bench_place_camera(&game, frame, span);
         video_render_game(&game);
         video_present();
     }
-    video_profile_enable(0);
+    video_profile_enable(false);
     video_profile_get(&profile);
     video_shutdown();
 
@@ -286,10 +286,10 @@ static int benchmark(AssetPack *assets)
            profile.frames, profile.background_ticks, profile.tile_ticks,
            profile.sprite_ticks, profile.hud_ticks, profile.present_ticks,
            PROFILE_TIMER_HZ);
-    return 1;
+    return true;
 }
 
-static int scene_is(const char *kind, const char *name)
+static bool scene_is(const char *kind, const char *name)
 {
     return kind != 0 && !stricmp(kind, name);
 }
@@ -323,14 +323,14 @@ static void render_capture_scene(AssetPack *assets, GameState *game, const char 
     }
 }
 
-static int capture_frame(AssetPack *assets, const char *kind)
+static bool capture_frame(AssetPack *assets, const char *kind)
 {
     GameState game;
     u32 crc;
-    int written;
+    bool written;
     game_init(&game, assets);
-    if (!video_init(assets)) return 0;
-    video_vsync_enable(0);
+    if (!video_init(assets)) return false;
+    video_vsync_enable(false);
     render_capture_scene(assets, &game, kind);
     video_present();
     crc = video_vram_crc();
@@ -355,17 +355,17 @@ static int capture_frame(AssetPack *assets, const char *kind)
 typedef struct BotTarget {
     int x;
     unsigned pickup_index;
-    int is_pickup;
+    bool is_pickup;
 } BotTarget;
 
-static int bot_encounter_pending(const GameState *game, u16 animal_id)
+static bool bot_encounter_pending(const GameState *game, u16 animal_id)
 {
     const LevelData *level = &game->assets->level;
     unsigned e;
     for (e = 0; e < level->encounter_count; ++e)
         if (!game->encounter_solved[e] && level->encounters[e].animal_id == animal_id)
-            return 1;
-    return 0;
+            return true;
+    return false;
 }
 
 /* Only pickups on the ground row are chased: every required berry sits there, and
@@ -378,7 +378,7 @@ static BotTarget bot_nearest_pickup(const GameState *game, const u8 *abandoned,
     unsigned best = BOT_NO_TARGET, i;
     target.x = (int)level->exit.x * TILE_SIZE;
     target.pickup_index = BOT_NO_TARGET;
-    target.is_pickup = 0;
+    target.is_pickup = false;
     for (i = 0; i < level->pickup_count; ++i) {
         int candidate;
         unsigned distance;
@@ -390,7 +390,7 @@ static BotTarget bot_nearest_pickup(const GameState *game, const u8 *abandoned,
         best = distance;
         target.x = candidate;
         target.pickup_index = i;
-        target.is_pickup = 1;
+        target.is_pickup = true;
     }
     return target;
 }
@@ -436,20 +436,20 @@ static void bot_scan_animals(const GameState *game, int player_x, int direction,
     }
 }
 
-static int bot_hazard_ahead(const GameState *game, int player_x, int direction)
+static bool bot_hazard_ahead(const GameState *game, int player_x, int direction)
 {
     int probe;
     for (probe = 12; probe <= 64; probe += 8)
         if (game_tile_hazard(game, player_x + direction * probe,
-                             LEVEL_HEIGHT * TILE_SIZE - 8)) return 1;
-    return 0;
+                             LEVEL_HEIGHT * TILE_SIZE - 8)) return true;
+    return false;
 }
 
 /* Only jump from the ground row. Every required pickup sits there, so the bot has
  * no reason to climb, and jumping while already standing on a platform used to
  * walk it up a staircase it could not descend. Standing on the ground row puts
  * the top of the player at (LEVEL_HEIGHT-2)*16 - PLAYER_H. */
-static int bot_on_ground_row(const GameState *game, int player_y)
+static bool bot_on_ground_row(const GameState *game, int player_y)
 {
     int ground_top = (LEVEL_HEIGHT - 2) * TILE_SIZE - PLAYER_H;
     return game->player.on_ground && player_y >= ground_top - 4;
@@ -513,7 +513,7 @@ static void bot_report_failure(const GameState *game, unsigned stage, unsigned f
     trace_dump("playtest stage failed");
 }
 
-static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
+static bool playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
 {
     GameState game;
     GameInput input;
@@ -552,23 +552,23 @@ static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
     if (!game.won || game.game_over ||
         game.red_collected < assets->level.required_red || !game.guardian_solved) {
         bot_report_failure(&game, stage, frame);
-        return 0;
+        return false;
     }
     *hp = game.player.hp;
     *lives = game.player.lives;
     printf("KOLOBOK PLAYTEST LEVEL %u PASS frames=%u hp=%u lives=%u\n",
            stage + 1, frame, *hp, *lives);
-    return 1;
+    return true;
 }
 
-static int campaign_playtest(AssetPack *assets, Error &error)
+static bool campaign_playtest(AssetPack *assets, Error &error)
 {
     u8 hp = FULL_HP, lives = DEFAULT_LIVES;
     unsigned stage;
-    int passed = 1;
+    bool passed = true;
     assets_free(assets);
     for (stage = 0; stage < Stage::COUNT && passed; ++stage) {
-        if (!load_stage(assets, stage, error)) return 0;
+        if (!load_stage(assets, stage, error)) return false;
         passed = playtest_stage(assets, stage, &hp, &lives);
         assets_free(assets);
     }
@@ -620,39 +620,39 @@ typedef struct App {
 
 /* Each level owns the whole far-memory bank, so a stage change tears the video
  * mode and the current bank down before bringing the next one up. */
-static int enter_stage(App *app, unsigned stage, u8 hp, u8 lives)
+static bool enter_stage(App *app, unsigned stage, u8 hp, u8 lives)
 {
     video_shutdown();
     assets_free(&app->assets);
     app->stage = stage;
-    if (!load_stage(&app->assets, stage, app->error)) return 0;
-    if (!video_init(&app->assets)) return 0;
+    if (!load_stage(&app->assets, stage, app->error)) return false;
+    if (!video_init(&app->assets)) return false;
     game_init(&app->game, &app->assets, hp, lives);
-    return 1;
+    return true;
 }
 
-static int enter_title(App *app)
+static bool enter_title(App *app)
 {
     video_shutdown();
     assets_free(&app->assets);
     app->stage = Stage::GARDEN;
-    if (!load_title(&app->assets, app->error)) return 0;
-    if (!video_init(&app->assets)) return 0;
+    if (!load_title(&app->assets, app->error)) return false;
+    if (!video_init(&app->assets)) return false;
     game_init(&app->game, &app->assets);
     music_play(Track::TITLE);
-    return 1;
+    return true;
 }
 
 /* -selftest takes precedence over -playtest over -benchmark over -capture, so a
  * command line naming several modes behaves the same way it always has. */
-static Mode::Enum parse_arguments(int argc, char **argv, int *music_requested,
+static Mode::Enum parse_arguments(int argc, char **argv, bool *music_requested,
                             const char **capture_kind)
 {
     int selftest_flag = 0, playtest_flag = 0, benchmark_flag = 0, capture_flag = 0;
     int i;
     for (i = 1; i < argc; ++i) {
-        if (!stricmp(argv[i], "-nosound")) sound_on = 0;
-        else if (!stricmp(argv[i], "-nomusic")) *music_requested = 0;
+        if (!stricmp(argv[i], "-nosound")) sound_on = false;
+        else if (!stricmp(argv[i], "-nomusic")) *music_requested = false;
         else if (!stricmp(argv[i], "-selftest")) selftest_flag = 1;
         else if (!stricmp(argv[i], "-playtest")) playtest_flag = 1;
         else if (!stricmp(argv[i], "-benchmark")) benchmark_flag = 1;
@@ -679,9 +679,9 @@ static unsigned stage_for_scene(Mode::Enum mode, const char *kind)
     return Stage::GARDEN;
 }
 
-static int load_for_mode(App *app, Mode::Enum mode, const char *capture_kind)
+static bool load_for_mode(App *app, Mode::Enum mode, const char *capture_kind)
 {
-    int wants_title = mode == Mode::PLAY || mode == Mode::SELFTEST ||
+    bool wants_title = mode == Mode::PLAY || mode == Mode::SELFTEST ||
                       mode == Mode::PLAYTEST ||
                       (mode == Mode::CAPTURE && scene_is(capture_kind, "intro"));
     if (wants_title) return load_title(&app->assets, app->error);
@@ -692,23 +692,23 @@ typedef struct TitleMenu {
     unsigned selection;
     char codeword[CODEWORD_MAX + 1];
     unsigned length;
-    int invalid;
+    bool invalid;
 } TitleMenu;
 
-/* Returns 0 when the player chose to leave the game. */
-static int run_title(App *app, TitleMenu *title, UiState *ui,
+/* False when the player chose to leave the game. */
+static bool run_title(App *app, TitleMenu *title, UiState *ui,
                      unsigned *intro_scene, u32 *ui_ticks)
 {
     if (key_pressed(Key::UP)) title->selection = title->selection ? title->selection - 1 : 2;
     if (key_pressed(Key::DOWN)) title->selection = (title->selection + 1) % 3;
-    if (key_pressed(Key::ESCAPE)) return 0;
+    if (key_pressed(Key::ESCAPE)) return false;
     if (key_pressed(Key::ENTER) || key_pressed(Key::SPACE)) {
-        if (title->selection == 2) return 0;
+        if (title->selection == 2) return false;
         if (title->selection == 1) {
             *ui = UI_CODE;
             title->length = 0;
             title->codeword[0] = 0;
-            title->invalid = 0;
+            title->invalid = false;
         } else {
             app->stage = Stage::GARDEN;
             game_init(&app->game, &app->assets);
@@ -721,7 +721,7 @@ static int run_title(App *app, TitleMenu *title, UiState *ui,
     }
     video_render_menu(&app->assets, title->selection);
     video_present();
-    return 1;
+    return true;
 }
 
 int main(int argc, char **argv)
@@ -734,7 +734,7 @@ int main(int argc, char **argv)
     const char *capture_kind = 0;
     unsigned dialogue_choice = 0, intro_scene = 0, remainder = 0;
     u32 ui_ticks = 0;
-    int music_requested = 1, running = 1, result;
+    bool music_requested = true, running = true, result;
     clock_t next;
 
     setvbuf(stdout, NULL, _IONBF, 0);
@@ -809,7 +809,7 @@ int main(int argc, char **argv)
                 if (key_pressed(Key::ENTER)) {
                     int selected = campaign_codeword_stage(title.codeword);
                     if (selected < 0) {
-                        title.invalid = 1;
+                        title.invalid = true;
                     } else if (!enter_stage(&app, (unsigned)selected,
                                            FULL_HP, DEFAULT_LIVES)) {
                         break;
@@ -843,7 +843,7 @@ int main(int argc, char **argv)
             }
         }
         if (ui == UI_PAUSE) {
-            if (key_pressed(Key::ESCAPE)) running = 0;
+            if (key_pressed(Key::ESCAPE)) running = false;
             else if (key_pressed(Key::ENTER)) {
                 ui = UI_PLAY;
                 keyboard_clear_edges();

@@ -104,12 +104,12 @@ void game_step(GameState *game, const GameInput *input);
 void game_respawn(GameState *game);
 void game_lose_life(GameState *game);
 void game_damage(GameState *game, u8 animal_type, int source_x);
-int game_apply_pickup(GameState *game, u8 type);
-int game_try_talk(GameState *game);
+bool game_apply_pickup(GameState *game, u8 type);
+bool game_try_talk(GameState *game);
 int game_answer_dialogue(GameState *game, unsigned answer);
-int game_exit_ready(const GameState *game);
-int game_tile_solid(const GameState *game, int px, int py);
-int game_tile_hazard(const GameState *game, int px, int py);
+bool game_exit_ready(const GameState *game);
+bool game_tile_solid(const GameState *game, int px, int py);
+bool game_tile_hazard(const GameState *game, int px, int py);
 u8 game_surface_at(const GameState *game, int px, int py);
 int campaign_codeword_stage(const char *word);
 

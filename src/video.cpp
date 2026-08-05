@@ -66,12 +66,12 @@ unsigned char draw_pan;
 static unsigned char display_pan;
 static unsigned char pending_pan;
 static unsigned char current_map_mask = 0xff;
-static int flip_pending;
-static int vsync_enabled = 1;
-static int profile_enabled;
+static bool flip_pending;
+static bool vsync_enabled = true;
+static bool profile_enabled;
 int render_state;
-static int title_cache_valid;
-static int hud_cache_valid;
+static bool title_cache_valid;
+static bool hud_cache_valid;
 static short tree_origin[MAX_CAMERA + 1];
 static unsigned char tree_tall[MAX_CAMERA + 1];
 static unsigned char capture_row[SCREEN_W * 3];
@@ -555,7 +555,7 @@ static void build_tile_cache(const AssetPack *assets)
         }
 }
 
-static int tile_fully_onscreen(int x, int y)
+static bool tile_fully_onscreen(int x, int y)
 {
     return x >= 0 && x <= LOGICAL_W - TILE_SIZE && y >= 0 && y <= SCREEN_H - TILE_SIZE;
 }
@@ -645,7 +645,7 @@ static void build_hud_cache(const AssetPack *assets)
     }
     draw_base = saved_base;
     draw_pan = saved_pan;
-    hud_cache_valid = 1;
+    hud_cache_valid = true;
 }
 
 static void draw_hud(const GameState *game)
@@ -663,10 +663,10 @@ static void draw_hud(const GameState *game)
     }
 }
 
-int video_init(const AssetPack *assets)
+bool video_init(const AssetPack *assets)
 {
     unsigned i;
-    if (_dos_allocmem(4000, &scratch_segment) != 0) return 0;
+    if (_dos_allocmem(4000, &scratch_segment) != 0) return false;
 #ifdef KOLO_DEBUG_LOAD
     puts("VIDEO scratch");
 #endif
@@ -699,12 +699,12 @@ int video_init(const AssetPack *assets)
     draw_base = display_base = pending_base = GAME_PAGE_0;
     draw_pan = display_pan = 0;
     pending_pan = 0;
-    flip_pending = 0;
+    flip_pending = false;
     set_display_start(display_base, display_pan);
 #ifdef KOLO_DEBUG_LOAD
     puts("VIDEO display");
 #endif
-    return 1;
+    return true;
 }
 
 void video_shutdown(void)
@@ -713,12 +713,12 @@ void video_shutdown(void)
     if (scratch_segment != 0) _dos_freemem(scratch_segment);
     scratch = NULL;
     scratch_segment = 0;
-    title_cache_valid = hud_cache_valid = 0;
+    title_cache_valid = hud_cache_valid = false;
     render_state = RENDER_NONE;
     current_map_mask = 0xff;
 }
 
-void video_vsync_enable(int enabled)
+void video_vsync_enable(bool enabled)
 {
     vsync_enabled = enabled;
 }
@@ -738,7 +738,7 @@ void video_present(void)
         set_pel_pan(pending_pan);
         display_base = pending_base;
         display_pan = pending_pan;
-        flip_pending = 0;
+        flip_pending = false;
     }
     if (profile_enabled) profile.present_ticks += profile_elapsed(stage);
 }
@@ -756,7 +756,7 @@ static void queue_hidden_frame(unsigned char pan, int state)
 {
     pending_base = draw_base;
     pending_pan = pan;
-    flip_pending = 1;
+    flip_pending = true;
     render_state = state;
 }
 
@@ -789,7 +789,7 @@ static void begin_title_frame(const AssetPack *assets)
         draw_text(67, 72, "FOREST BERRIES", COLOR_WHITE, 1);
         draw_text(55, 88, "ARROWS OR A D TO ROLL", COLOR_GREY_LIGHT, 1);
         draw_text(67, 99, "SPACE OR UP TO JUMP", COLOR_GREY_LIGHT, 1);
-        title_cache_valid = 1;
+        title_cache_valid = true;
     }
     begin_hidden_frame();
     latch_copy(TITLE_PAGE, draw_base, PAGE_SIZE);
@@ -809,7 +809,7 @@ void video_render_menu(const AssetPack *assets, unsigned selection)
     queue_hidden_frame(0, RENDER_TITLE);
 }
 
-void video_render_codeword(const AssetPack *assets, const char *word, int invalid)
+void video_render_codeword(const AssetPack *assets, const char *word, bool invalid)
 {
     begin_title_frame(assets);
     fill_rect(58, 112, 204, 57, COLOR_PINE);
@@ -1106,7 +1106,7 @@ u32 video_vram_crc(void)
     return scratch_crc();
 }
 
-void video_profile_enable(int enabled)
+void video_profile_enable(bool enabled)
 {
     if (enabled) platform_profile_timer_init();
     profile_enabled = enabled;
@@ -1122,11 +1122,11 @@ void video_profile_get(VideoProfile *result)
     *result = profile;
 }
 
-int video_display_state_valid(void)
+bool video_display_state_valid(void)
 {
     unsigned start;
     unsigned char pan;
-    if (!(inp(0x3c0) & 0x20)) return 0;
+    if (!(inp(0x3c0) & 0x20)) return false;
     outp(0x3d4, 0x0c);
     start = (unsigned)inp(0x3d5) << 8;
     outp(0x3d4, 0x0d);
@@ -1137,16 +1137,16 @@ int video_display_state_valid(void)
     return start == display_base && pan == (unsigned char)(display_pan * 2);
 }
 
-int video_write_ppm(const char *path, const AssetPack *assets)
+bool video_write_ppm(const char *path, const AssetPack *assets)
 {
     FILE *file;
     int y;
     reconstruct_page(display_base, display_pan);
     file = fopen(path, "wb");
-    if (file == NULL) return 0;
+    if (file == NULL) return false;
     if (fprintf(file, "P6\n%d %d\n255\n", SCREEN_W, SCREEN_H) < 0) {
         fclose(file);
-        return 0;
+        return false;
     }
     for (y = 0; y < SCREEN_H; ++y) {
         int x;
@@ -1162,7 +1162,7 @@ int video_write_ppm(const char *path, const AssetPack *assets)
         if (fwrite(capture_row, 1, sizeof(capture_row), file) !=
             sizeof(capture_row)) {
             fclose(file);
-            return 0;
+            return false;
         }
     }
     return fclose(file) == 0;

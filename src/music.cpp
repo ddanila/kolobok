@@ -128,7 +128,7 @@ static void write_operator_pair(u8 base, u8 offset, u8 value)
 /* Standard OPL2 presence test: reset the timers, latch the status register, then
  * start timer 1 and confirm the overflow bits appear only after it has run. Absent
  * hardware floats the status port and the two reads will not match this pattern. */
-static int detect_opl(void)
+static bool detect_opl(void)
 {
 #ifdef __WATCOMC__
     unsigned i, before, after;
@@ -191,15 +191,15 @@ void music_set_sink(MusicRegisterSink sink, void *context)
     sink_context = context;
 }
 
-int music_init(int requested)
+bool music_init(bool requested)
 {
     detected = (u8)(requested && detect_opl());
     enabled = detected;
-    if (!detected) return 0;
+    if (!detected) return false;
     write_reg(OPL_TEST, 0x20);
     write_reg(OPL_PERCUSSION, 0);
     music_play(Track::TITLE);
-    return 1;
+    return true;
 }
 
 void music_shutdown(void)
@@ -208,15 +208,15 @@ void music_shutdown(void)
     enabled = 0;
 }
 
-void music_set_enabled(int value)
+void music_set_enabled(bool value)
 {
     enabled = (u8)(value && detected);
     if (!enabled) silence_voices();
     else music_play(track_id);
 }
 
-int music_is_enabled(void) { return enabled != 0; }
-int music_is_detected(void) { return detected != 0; }
+bool music_is_enabled(void) { return enabled != 0; }
+bool music_is_detected(void) { return detected != 0; }
 
 static u8 score_for_track(unsigned track)
 {

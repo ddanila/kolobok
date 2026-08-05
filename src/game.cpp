@@ -52,19 +52,19 @@ static u8 tile_at(const GameState *game, int x, int y)
     return level->map[ty * level->width + tx];
 }
 
-static int tile_has_flag(const GameState *game, int x, int y, u8 flag)
+static bool tile_has_flag(const GameState *game, int x, int y, u8 flag)
 {
     u8 tile = tile_at(game, x, y);
     return tile < game->assets->tile_count &&
            (game->assets->tile_flags[tile] & flag) != 0;
 }
 
-int game_tile_solid(const GameState *game, int x, int y)
+bool game_tile_solid(const GameState *game, int x, int y)
 {
     return tile_has_flag(game, x, y, TileFlag::SOLID);
 }
 
-int game_tile_hazard(const GameState *game, int x, int y)
+bool game_tile_hazard(const GameState *game, int x, int y)
 {
     return tile_has_flag(game, x, y, TileFlag::HAZARD);
 }
@@ -156,7 +156,7 @@ static void move_vertical(GameState *game)
     }
 }
 
-static int overlap(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh)
+static bool overlap(int ax, int ay, int aw, int ah, int bx, int by, int bw, int bh)
 {
     return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
@@ -375,31 +375,31 @@ static void update_enemies(GameState *game, int old_bottom)
     }
 }
 
-int game_apply_pickup(GameState *game, u8 type)
+bool game_apply_pickup(GameState *game, u8 type)
 {
     PlayerState *p = &game->player;
     if (type == PickupType::RED) {
         ++game->red_collected;
         event_add(game, Event::BERRY);
-        return 1;
+        return true;
     }
     if (type == PickupType::BLUE) {
         game->blue_timer = BLUE_FRAMES;
         event_add(game, Event::BLUE);
-        return 1;
+        return true;
     }
     if (type == PickupType::SMALL_PIE) {
-        if (p->hp == FULL_HP && p->lives >= DEFAULT_LIVES) return 0;
+        if (p->hp == FULL_HP && p->lives >= DEFAULT_LIVES) return false;
         p->hp = FULL_HP;
         if (p->lives < DEFAULT_LIVES) ++p->lives;
         event_add(game, Event::PIE);
-        return 1;
+        return true;
     }
     p->hp = FULL_HP;
     if (p->lives < DEFAULT_LIVES) p->lives = DEFAULT_LIVES;
     else if (p->lives < MAX_LIVES) ++p->lives;
     event_add(game, Event::PIE);
-    return 1;
+    return true;
 }
 
 static void collect_pickups(GameState *game)
@@ -444,7 +444,7 @@ static void update_collectibles(GameState *game)
     }
 }
 
-int game_exit_ready(const GameState *game)
+bool game_exit_ready(const GameState *game)
 {
     return game->red_collected >= game->assets->level.required_red &&
            game->guardian_solved;
@@ -458,12 +458,12 @@ static EnemyState *enemy_by_id(GameState *game, u16 animal_id)
     return 0;
 }
 
-int game_try_talk(GameState *game)
+bool game_try_talk(GameState *game)
 {
     const LevelData *level = &game->assets->level;
     int x = px(game->player.x), y = px(game->player.y);
     unsigned i;
-    if (game->active_dialogue) return 1;
+    if (game->active_dialogue) return true;
     for (i = 0; i < level->encounter_count; ++i) {
         EnemyState *e;
         if (game->encounter_solved[i]) continue;
@@ -473,9 +473,9 @@ int game_try_talk(GameState *game)
         game->active_dialogue = 1;
         game->active_encounter = (s8)i;
         event_add(game, Event::DIALOGUE);
-        return 1;
+        return true;
     }
-    return 0;
+    return false;
 }
 
 static void grant_reward(GameState *game, u8 reward)
@@ -567,7 +567,7 @@ static void apply_jump_input(GameState *game, const GameInput *input)
     if (!input->jump_held && !p->enemy_bounce && p->vy < SHORT_JUMP) p->vy = SHORT_JUMP;
 }
 
-static int fell_to_death(const GameState *game)
+static bool fell_to_death(const GameState *game)
 {
     const PlayerState *p = &game->player;
     int x = px(p->x), foot_y = px(p->y) + PLAYER_H;

@@ -40,13 +40,13 @@ struct Key {
 
 #define PROFILE_TIMER_HZ 1193182UL
 
-int keyboard_install(void);
+bool keyboard_install(void);
 void keyboard_remove(void);
-int key_down(unsigned scan);
-int key_pressed(unsigned scan);
+bool key_down(unsigned scan);
+bool key_pressed(unsigned scan);
 void keyboard_clear_edges(void);
 
-void speaker_init(int enabled);
+void speaker_init(bool enabled);
 void speaker_play(unsigned frequency, unsigned frames);
 void speaker_tick(void);
 void speaker_shutdown(void);
