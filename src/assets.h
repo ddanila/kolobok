@@ -11,11 +11,11 @@ typedef unsigned long u32;
 typedef signed long s32;
 
 #ifdef __WATCOMC__
-typedef u8 __far *KoloFarPtr;
-typedef const u8 __far *KoloConstFarPtr;
+typedef u8 __far *FarPtr;
+typedef const u8 __far *ConstFarPtr;
 #else
-typedef u8 *KoloFarPtr;
-typedef const u8 *KoloConstFarPtr;
+typedef u8 *FarPtr;
+typedef const u8 *ConstFarPtr;
 #endif
 
 #define TILE_SIZE 16
@@ -75,57 +75,57 @@ struct AnimalField {
 /* Stored in the KLV as an absent tree, dialogue or other cross-reference. */
 #define NO_ID 0xffff
 
-typedef struct KoloPoint { u16 x, y; } KoloPoint;
+typedef struct Point { u16 x, y; } Point;
 
-typedef struct KoloPickup {
+typedef struct Pickup {
     u8 type, flags;
     u16 id, x, y;
-} KoloPickup;
+} Pickup;
 
-typedef struct KoloAnimalSpawn {
+typedef struct AnimalSpawn {
     u8 type, flags;
     u16 id, x, y, min_x, max_x, tree_id, climb_min, climb_max, dialogue_id;
-} KoloAnimalSpawn;
+} AnimalSpawn;
 
-typedef struct KoloTree {
+typedef struct Tree {
     u8 type, flags;
     u16 id, x, y;
     u8 height;
-} KoloTree;
+} Tree;
 
-typedef struct KoloEncounter {
+typedef struct Encounter {
     u16 id, animal_id;
     u8 dialogue_id, required, correct, reward;
     u16 retry_frames;
-} KoloEncounter;
+} Encounter;
 
 typedef struct LevelData {
     u16 width, height;
     u8 theme, required_red;
     u32 cloud_seed;
     u8 *map;
-    KoloPoint start, exit, home;
+    Point start, exit, home;
     u16 checkpoint_count, pickup_count, animal_count, tree_count, encounter_count;
-    KoloPoint checkpoints[MAX_CHECKPOINTS];
-    KoloPickup pickups[MAX_PICKUPS];
-    KoloAnimalSpawn animals[MAX_ENEMIES];
-    KoloTree trees[MAX_TREES];
-    KoloEncounter encounters[MAX_ENCOUNTERS];
+    Point checkpoints[MAX_CHECKPOINTS];
+    Pickup pickups[MAX_PICKUPS];
+    AnimalSpawn animals[MAX_ENEMIES];
+    Tree trees[MAX_TREES];
+    Encounter encounters[MAX_ENCOUNTERS];
 } LevelData;
 
 typedef struct AssetPack {
-    KoloFarPtr blob;
+    FarPtr blob;
     u32 blob_size;
     u16 bank_segment;
     u16 theme;
     u16 tile_count;
     u16 sprite_count;
-    KoloFarPtr palette;
-    KoloFarPtr tiles;
-    KoloFarPtr tile_flags;
-    KoloFarPtr tile_material;
-    KoloFarPtr sprite_spans[MAX_SPRITES];
-    KoloFarPtr sprite_planar_spans[MAX_SPRITES][16];
+    FarPtr palette;
+    FarPtr tiles;
+    FarPtr tile_flags;
+    FarPtr tile_material;
+    FarPtr sprite_spans[MAX_SPRITES];
+    FarPtr sprite_planar_spans[MAX_SPRITES][16];
     LevelData level;
 } AssetPack;
 
@@ -137,8 +137,8 @@ int level_load(LevelData *level, const char *path, char *error, unsigned error_s
 int level_save(const LevelData *level, const char *path, char *error, unsigned error_size);
 void level_free(LevelData *level);
 int level_validate(const LevelData *level, char *error, unsigned error_size);
-u32 assets_crc32(KoloConstFarPtr data, u32 length);
+u32 assets_crc32(ConstFarPtr data, u32 length);
 int assets_far_memory_active(const AssetPack *pack);
-unsigned kolo_property_field_count(unsigned kind);
+unsigned assets_property_field_count(unsigned kind);
 
 #endif

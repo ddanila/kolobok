@@ -61,7 +61,7 @@ static u32 read_u32_at(const u8 *p)
     return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
 }
 
-static void read_point(const u8 **cursor, KoloPoint *point)
+static void read_point(const u8 **cursor, Point *point)
 {
     point->x = read_u16(cursor);
     point->y = read_u16(cursor);
@@ -87,13 +87,13 @@ static void put_u16(u8 **p, u16 value)
     *(*p)++ = (u8)(value >> 8);
 }
 
-static void put_point(u8 **p, KoloPoint point)
+static void put_point(u8 **p, Point point)
 {
     put_u16(p, point.x);
     put_u16(p, point.y);
 }
 
-u32 assets_crc32(KoloConstFarPtr data, u32 length)
+u32 assets_crc32(ConstFarPtr data, u32 length)
 {
     u32 crc = 0xffffffffUL, i;
     int bit;
@@ -114,17 +114,17 @@ static int set_error(char *error, unsigned size, const char *message)
     return 0;
 }
 
-static u16 far_read_u16_at(KoloConstFarPtr cursor)
+static u16 far_read_u16_at(ConstFarPtr cursor)
 {
     return (u16)(cursor[0] | ((u16)cursor[1] << 8));
 }
 
-static u32 far_read_u32(KoloConstFarPtr p)
+static u32 far_read_u32(ConstFarPtr p)
 {
     return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
 }
 
-static int far_equal(KoloConstFarPtr p, const char *text, unsigned length)
+static int far_equal(ConstFarPtr p, const char *text, unsigned length)
 {
     unsigned i;
     for (i = 0; i < length; ++i)
@@ -132,7 +132,7 @@ static int far_equal(KoloConstFarPtr p, const char *text, unsigned length)
     return 1;
 }
 
-unsigned kolo_property_field_count(unsigned kind)
+unsigned assets_property_field_count(unsigned kind)
 {
     if (kind == PropertyKind::PICKUP) return PickupField::COUNT;
     if (kind == PropertyKind::ANIMAL) return AnimalField::COUNT;
@@ -195,7 +195,7 @@ static int validate_pickups(const LevelData *level, char *error, unsigned error_
 {
     unsigned i, j, red = 0;
     for (i = 0; i < level->pickup_count; ++i) {
-        const KoloPickup *pickup = &level->pickups[i];
+        const Pickup *pickup = &level->pickups[i];
         if (pickup->type > PickupType::BIG_PIE ||
             pickup->x >= level->width || pickup->y >= level->height)
             return set_error(error, error_size, "invalid pickup record");
@@ -213,7 +213,7 @@ static int validate_animals(const LevelData *level, char *error, unsigned error_
 {
     unsigned i, j;
     for (i = 0; i < level->animal_count; ++i) {
-        const KoloAnimalSpawn *animal = &level->animals[i];
+        const AnimalSpawn *animal = &level->animals[i];
         if (animal->type > AnimalType::BEAR ||
             animal->x >= level->width || animal->y >= level->height ||
             animal->min_x > animal->x || animal->max_x < animal->x ||
@@ -230,7 +230,7 @@ static int validate_trees(const LevelData *level, char *error, unsigned error_si
 {
     unsigned i, j;
     for (i = 0; i < level->tree_count; ++i) {
-        const KoloTree *tree = &level->trees[i];
+        const Tree *tree = &level->trees[i];
         if (tree->type > TreeType::OAK || tree->x >= level->width ||
             tree->y >= level->height || !tree->height)
             return set_error(error, error_size, "invalid tree record");
@@ -266,7 +266,7 @@ static int validate_cross_references(const LevelData *level, char *error,
             !tree_exists(level, level->animals[i].tree_id))
             return set_error(error, error_size, "animal refers to missing tree");
     for (i = 0; i < level->encounter_count; ++i) {
-        const KoloEncounter *encounter = &level->encounters[i];
+        const Encounter *encounter = &level->encounters[i];
         if (!animal_exists(level, encounter->animal_id))
             return set_error(error, error_size, "encounter refers to missing animal");
         if (encounter->correct > 2 || encounter->reward > Reward::SMALL_PIE)
@@ -303,7 +303,7 @@ int level_validate(const LevelData *level, char *error, unsigned error_size)
     return validate_cross_references(level, error, error_size);
 }
 
-static void read_pickup(const u8 **p, KoloPickup *pickup)
+static void read_pickup(const u8 **p, Pickup *pickup)
 {
     pickup->type = *(*p)++;
     pickup->flags = *(*p)++;
@@ -312,7 +312,7 @@ static void read_pickup(const u8 **p, KoloPickup *pickup)
     pickup->y = read_u16(p);
 }
 
-static void read_animal(const u8 **p, KoloAnimalSpawn *animal)
+static void read_animal(const u8 **p, AnimalSpawn *animal)
 {
     animal->type = *(*p)++;
     animal->flags = *(*p)++;
@@ -328,7 +328,7 @@ static void read_animal(const u8 **p, KoloAnimalSpawn *animal)
 }
 
 /* A tree's row and height share one 16-bit field, low byte first. */
-static void read_tree(const u8 **p, KoloTree *tree)
+static void read_tree(const u8 **p, Tree *tree)
 {
     u16 row_and_height;
     tree->type = *(*p)++;
@@ -340,7 +340,7 @@ static void read_tree(const u8 **p, KoloTree *tree)
     tree->height = (u8)(row_and_height >> 8);
 }
 
-static void read_encounter(const u8 **p, KoloEncounter *encounter)
+static void read_encounter(const u8 **p, Encounter *encounter)
 {
     encounter->id = read_u16(p);
     encounter->animal_id = read_u16(p);
@@ -351,7 +351,7 @@ static void read_encounter(const u8 **p, KoloEncounter *encounter)
     encounter->retry_frames = read_u16(p);
 }
 
-static void write_pickup(u8 **p, const KoloPickup *pickup)
+static void write_pickup(u8 **p, const Pickup *pickup)
 {
     *(*p)++ = pickup->type;
     *(*p)++ = pickup->flags;
@@ -360,7 +360,7 @@ static void write_pickup(u8 **p, const KoloPickup *pickup)
     put_u16(p, pickup->y);
 }
 
-static void write_animal(u8 **p, const KoloAnimalSpawn *animal)
+static void write_animal(u8 **p, const AnimalSpawn *animal)
 {
     *(*p)++ = animal->type;
     *(*p)++ = animal->flags;
@@ -375,7 +375,7 @@ static void write_animal(u8 **p, const KoloAnimalSpawn *animal)
     put_u16(p, animal->dialogue_id);
 }
 
-static void write_tree(u8 **p, const KoloTree *tree)
+static void write_tree(u8 **p, const Tree *tree)
 {
     *(*p)++ = tree->type;
     *(*p)++ = tree->flags;
@@ -384,7 +384,7 @@ static void write_tree(u8 **p, const KoloTree *tree)
     put_u16(p, (u16)(tree->y | ((u16)tree->height << 8)));
 }
 
-static void write_encounter(u8 **p, const KoloEncounter *encounter)
+static void write_encounter(u8 **p, const Encounter *encounter)
 {
     put_u16(p, encounter->id);
     put_u16(p, encounter->animal_id);
@@ -611,7 +611,7 @@ int level_save(const LevelData *level, const char *path, char *error,
 
 /* Walks one sprite's run-length rows, checking every run stays inside both the
  * declared stream and a row of `row_width` pixels. Advances `cursor` past it. */
-static int check_span_rows(KoloConstFarPtr *cursor, KoloConstFarPtr span_end,
+static int check_span_rows(ConstFarPtr *cursor, ConstFarPtr span_end,
                            unsigned row_width, char *error, unsigned error_size,
                            const char *what)
 {
@@ -634,10 +634,10 @@ static int check_span_rows(KoloConstFarPtr *cursor, KoloConstFarPtr span_end,
     return 1;
 }
 
-static int parse_bank_header(AssetPack *pack, KoloConstFarPtr *cursor,
-                             KoloConstFarPtr end, char *error, unsigned error_size)
+static int parse_bank_header(AssetPack *pack, ConstFarPtr *cursor,
+                             ConstFarPtr end, char *error, unsigned error_size)
 {
-    KoloConstFarPtr p = *cursor;
+    ConstFarPtr p = *cursor;
     u16 version = far_read_u16_at(p);
     u16 tile_w, tile_h;
     p += 2;
@@ -658,13 +658,13 @@ static int parse_bank_header(AssetPack *pack, KoloConstFarPtr *cursor,
     if ((u32)(end - p) < BANK_PALETTE_SIZE +
                          (u32)pack->tile_count * (TILE_PIXELS + 2UL) + 4UL)
         return set_error(error, error_size, "truncated resource bank");
-    pack->palette = (KoloFarPtr)p;
+    pack->palette = (FarPtr)p;
     p += BANK_PALETTE_SIZE;
-    pack->tiles = (KoloFarPtr)p;
+    pack->tiles = (FarPtr)p;
     p += (u32)pack->tile_count * TILE_PIXELS;
-    pack->tile_flags = (KoloFarPtr)p;
+    pack->tile_flags = (FarPtr)p;
     p += pack->tile_count;
-    pack->tile_material = (KoloFarPtr)p;
+    pack->tile_material = (FarPtr)p;
     p += pack->tile_count;
     *cursor = p;
     return 1;
@@ -672,7 +672,7 @@ static int parse_bank_header(AssetPack *pack, KoloConstFarPtr *cursor,
 
 static int parse_bank(AssetPack *pack, char *error, unsigned error_size)
 {
-    KoloConstFarPtr p, end, span_end;
+    ConstFarPtr p, end, span_end;
     u16 span_size;
     unsigned i, variant;
     if (pack->blob_size < BANK_MIN_SIZE ||
@@ -692,7 +692,7 @@ static int parse_bank(AssetPack *pack, char *error, unsigned error_size)
         return set_error(error, error_size, "truncated sprite spans");
     span_end = p + span_size;
     for (i = 0; i < pack->sprite_count; ++i) {
-        pack->sprite_spans[i] = (KoloFarPtr)p;
+        pack->sprite_spans[i] = (FarPtr)p;
         if (!check_span_rows(&p, span_end, TILE_SIZE, error, error_size,
                              "invalid sprite span")) return 0;
     }
@@ -708,7 +708,7 @@ static int parse_bank(AssetPack *pack, char *error, unsigned error_size)
     span_end = p + span_size;
     for (i = 0; i < pack->sprite_count; ++i)
         for (variant = 0; variant < SPRITE_PLANE_VARIANTS; ++variant) {
-            pack->sprite_planar_spans[i][variant] = (KoloFarPtr)p;
+            pack->sprite_planar_spans[i][variant] = (FarPtr)p;
             if (!check_span_rows(&p, span_end, PLANAR_ROW_WIDTH, error, error_size,
                                  "invalid planar span")) return 0;
         }
@@ -728,7 +728,7 @@ static int read_bank_blob(AssetPack *pack, FILE *file, u32 size,
     if (_dos_allocmem((unsigned)((size + 15UL) >> 4), &segment) != 0)
         return set_error(error, error_size, "not enough far memory for resource bank");
     pack->bank_segment = (u16)segment;
-    pack->blob = (KoloFarPtr)MK_FP(pack->bank_segment, 0);
+    pack->blob = (FarPtr)MK_FP(pack->bank_segment, 0);
     while (done < size) {
         chunk = (unsigned)(size - done > sizeof(buffer) ? sizeof(buffer) : size - done);
         if (fread(buffer, 1, chunk, file) != chunk)

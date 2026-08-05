@@ -74,7 +74,7 @@ Three details worth knowing:
 
 Printing each event as it happens would put DOS console I/O inside the frame
 loop, which is slow under emulation and would bury a failure in thousands of
-lines. Records instead go into a 64-entry ring, and `kolo_trace_dump` prints it
+lines. Records instead go into a 64-entry ring, and `trace_dump` prints it
 only when something fails. The interesting history is the last minute before the
 failure, which is exactly what the ring holds. The dump reports how many older
 entries were overwritten so a truncated history is never mistaken for a complete
@@ -107,7 +107,7 @@ and another emulator run to establish.
 
 ## Cost when disabled
 
-None. `KOLO_LOG`, `kolo_trace_reset` and `kolo_trace_dump` become void
+None. `KOLO_LOG`, `trace_reset` and `trace_dump` become void
 expressions, no symbols are emitted, and `trace.cpp` collapses to a single typedef
 because ISO C forbids an empty translation unit. Building the same source before
 and after this feature produced byte-identical executables, so the 386DX-40

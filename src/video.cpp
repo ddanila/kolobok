@@ -356,12 +356,12 @@ static void draw_number(int x, int y, unsigned value, unsigned char color)
     draw_text(x, y, text + pos, color, 1);
 }
 
-static void blit_tile_plane(KoloConstFarPtr source, int x, int y,
+static void blit_tile_plane(ConstFarPtr source, int x, int y,
                             unsigned plane)
 {
     int sy;
     int relative = ((int)plane - (x & 3)) & 3;
-    KoloConstFarPtr plane_source = source + relative * 64;
+    ConstFarPtr plane_source = source + relative * 64;
     if (x >= 0 && x <= LOGICAL_W - 16 && y >= 0 && y <= SCREEN_H - 16) {
         blit_tile_plane_386(plane_source,
             draw_base + (unsigned)y * PITCH + ((x + relative) >> 2));
@@ -383,7 +383,7 @@ static void blit_tile_plane(KoloConstFarPtr source, int x, int y,
 static void blit_sprite_plane(const AssetPack *assets, unsigned sprite,
                               int x, int y, unsigned plane)
 {
-    KoloConstFarPtr source;
+    ConstFarPtr source;
     int sy;
     if (sprite >= assets->sprite_count || x <= -16 || x >= LOGICAL_W ||
         y <= -16 || y >= SCREEN_H) return;
@@ -505,7 +505,7 @@ static void draw_level_trees(const AssetPack *assets, int camera)
 {
     unsigned i;
     for (i = 0; i < assets->level.tree_count; ++i) {
-        const KoloTree *tree = &assets->level.trees[i];
+        const Tree *tree = &assets->level.trees[i];
         int x = tree->x * TILE_SIZE - camera;
         int base = HUD_H + tree->y * TILE_SIZE + TILE_SIZE;
         int height = tree->height * 12;
@@ -1159,7 +1159,7 @@ void video_render_editor_exit(const GameState *game)
     render_state = RENDER_PAUSE;
 }
 
-static const KoloEncounter *encounter_for_animal(const LevelData *level, u16 animal_id)
+static const Encounter *encounter_for_animal(const LevelData *level, u16 animal_id)
 {
     unsigned i;
     for (i = 0; i < level->encounter_count; ++i)
@@ -1186,7 +1186,7 @@ static void draw_property_number(int x, int y, unsigned value, int selected)
     draw_number(x + draw_pan, y, value, selected ? COLOR_LEMON : COLOR_WHITE);
 }
 
-static void draw_pickup_row(const KoloPickup *pickup, unsigned row, int y, int selected)
+static void draw_pickup_row(const Pickup *pickup, unsigned row, int y, int selected)
 {
     static const char *types[4] = {"RED BERRY", "BLUE BERRY", "SMALL PIE", "BIG PIE"};
     static const char *names[PickupField::COUNT] = {"SUBTYPE", "FLAGS"};
@@ -1197,7 +1197,7 @@ static void draw_pickup_row(const KoloPickup *pickup, unsigned row, int y, int s
         draw_property_number(PROPERTY_VALUE_X, y, pickup->flags, selected);
 }
 
-static void draw_tree_row(const KoloTree *tree, unsigned row, int y, int selected)
+static void draw_tree_row(const Tree *tree, unsigned row, int y, int selected)
 {
     static const char *types[3] = {"FIR", "BIRCH", "OAK"};
     static const char *names[TreeField::COUNT] = {"TREE TYPE", "FLAGS", "HEIGHT"};
@@ -1225,7 +1225,7 @@ static void draw_level_row(const LevelData *level, unsigned row, int y, int sele
                              selected);
 }
 
-static void draw_animal_row(const LevelData *level, const KoloAnimalSpawn *animal,
+static void draw_animal_row(const LevelData *level, const AnimalSpawn *animal,
                             unsigned row, int y, int selected)
 {
     static const char *names[AnimalField::COUNT] = {
@@ -1234,7 +1234,7 @@ static void draw_animal_row(const LevelData *level, const KoloAnimalSpawn *anima
     };
     static const char *types[4] = {"RABBIT", "FOX", "WOLF", "BEAR"};
     static const char *rewards[3] = {"NONE", "BLUE BERRY", "SMALL PIE"};
-    const KoloEncounter *encounter = encounter_for_animal(level, animal->id);
+    const Encounter *encounter = encounter_for_animal(level, animal->id);
     unsigned value;
     draw_property_name(y, names[row]);
     if (row == AnimalField::SUBTYPE) {
@@ -1275,7 +1275,7 @@ void video_render_editor_properties(const GameState *game, unsigned kind,
         "TREE PROPERTIES", "LEVEL PROPERTIES"
     };
     const LevelData *level = &game->assets->level;
-    unsigned row, count = kolo_property_field_count(kind);
+    unsigned row, count = assets_property_field_count(kind);
     video_render_game(game);
     fill_rect(25 + draw_pan, 25, 270, 158, COLOR_NIGHT);
     fill_rect(29 + draw_pan, 29, 262, 150, COLOR_PINE);

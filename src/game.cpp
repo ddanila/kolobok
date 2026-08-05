@@ -128,7 +128,7 @@ static void spawn_enemies(GameState *game)
     const LevelData *level = &game->assets->level;
     unsigned i;
     for (i = 0; i < level->animal_count; ++i) {
-        const KoloAnimalSpawn *spawn = &level->animals[i];
+        const AnimalSpawn *spawn = &level->animals[i];
         EnemyState *enemy = &game->enemies[i];
         enemy->id = spawn->id;
         enemy->type = spawn->type;
@@ -373,7 +373,7 @@ static void update_wolf(EnemyState *e, int dx, int dy)
 }
 
 static void update_bear(GameState *game, EnemyState *e,
-                        const KoloAnimalSpawn *spawn)
+                        const AnimalSpawn *spawn)
 {
     int trunk_x = tree_x(game, e->tree_id);
     switch (e->state) {
@@ -418,7 +418,7 @@ static void update_bear(GameState *game, EnemyState *e,
 static void update_enemy_ai(GameState *game, unsigned index)
 {
     EnemyState *e = &game->enemies[index];
-    const KoloAnimalSpawn *spawn = &game->assets->level.animals[index];
+    const AnimalSpawn *spawn = &game->assets->level.animals[index];
     int dx = px(game->player.x - e->x);
     int dy = px(game->player.y - e->y);
     if (e->retry) --e->retry;
@@ -495,7 +495,7 @@ static void collect_pickups(GameState *game)
     int x = px(game->player.x), y = px(game->player.y);
     unsigned i;
     for (i = 0; i < level->pickup_count; ++i) {
-        const KoloPickup *pickup = &level->pickups[i];
+        const Pickup *pickup = &level->pickups[i];
         if (game->pickup_taken[i]) continue;
         if (!overlap(x, y, PLAYER_W, PLAYER_H,
                      tiles_to_px(pickup->x) + 3, tiles_to_px(pickup->y) + 2,
@@ -573,7 +573,7 @@ static void grant_reward(GameState *game, u8 reward)
 
 int game_answer_dialogue(GameState *game, unsigned answer)
 {
-    const KoloEncounter *encounter;
+    const Encounter *encounter;
     EnemyState *e;
     unsigned index;
     if (!game->active_dialogue || game->active_encounter < 0 || answer > 2) return 0;

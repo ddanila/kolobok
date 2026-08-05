@@ -151,10 +151,10 @@ static u16 next_encounter_id(const LevelData *level)
     return id;
 }
 
-static KoloEncounter *encounter_for(LevelData *level, u16 animal_id, int create)
+static Encounter *encounter_for(LevelData *level, u16 animal_id, int create)
 {
-    const KoloAnimalSpawn *animal = 0;
-    KoloEncounter *encounter;
+    const AnimalSpawn *animal = 0;
+    Encounter *encounter;
     unsigned i;
     for (i = 0; i < level->encounter_count; ++i)
         if (level->encounters[i].animal_id == animal_id) return &level->encounters[i];
@@ -212,7 +212,7 @@ static int clamp_int(int value, int low, int high)
 }
 
 /* Cycles through the level's trees and back to "no tree" at either end. */
-static void adjust_tree_association(LevelData *level, KoloAnimalSpawn *animal, int delta)
+static void adjust_tree_association(LevelData *level, AnimalSpawn *animal, int delta)
 {
     int position = -1, next;
     unsigned i;
@@ -244,7 +244,7 @@ static int adjust_level_property(LevelData *level, unsigned field, int delta)
     return 1;
 }
 
-static int adjust_pickup_property(KoloPickup *pickup, unsigned field, int delta)
+static int adjust_pickup_property(Pickup *pickup, unsigned field, int delta)
 {
     if (field == PickupField::SUBTYPE)
         pickup->type = wrap_u8(pickup->type, delta, PickupType::COUNT);
@@ -253,7 +253,7 @@ static int adjust_pickup_property(KoloPickup *pickup, unsigned field, int delta)
     return 1;
 }
 
-static int adjust_tree_property(KoloTree *tree, unsigned field, int delta)
+static int adjust_tree_property(Tree *tree, unsigned field, int delta)
 {
     if (field == TreeField::TYPE)
         tree->type = wrap_u8(tree->type, delta, TreeType::COUNT);
@@ -269,8 +269,8 @@ static int adjust_tree_property(KoloTree *tree, unsigned field, int delta)
 static int adjust_animal_property(LevelData *level, unsigned index,
                                   unsigned field, int delta)
 {
-    KoloAnimalSpawn *animal = &level->animals[index];
-    KoloEncounter *encounter;
+    AnimalSpawn *animal = &level->animals[index];
+    Encounter *encounter;
     int value;
     switch (field) {
     case AnimalField::SUBTYPE:
@@ -337,7 +337,7 @@ static int adjust_property(LevelData *level, unsigned kind, unsigned index,
 
 static int place_pickup(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
-    KoloPickup *pickup;
+    Pickup *pickup;
     if (level->pickup_count >= MAX_PICKUPS) return 0;
     pickup = &level->pickups[level->pickup_count++];
     memset(pickup, 0, sizeof(*pickup));
@@ -350,7 +350,7 @@ static int place_pickup(LevelData *level, unsigned x, unsigned y, unsigned tool,
 
 static int place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
-    KoloAnimalSpawn *animal;
+    AnimalSpawn *animal;
     if (level->animal_count >= MAX_ENEMIES) return 0;
     animal = &level->animals[level->animal_count++];
     memset(animal, 0, sizeof(*animal));
@@ -368,7 +368,7 @@ static int place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool,
 
 static int place_tree(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
-    KoloTree *tree;
+    Tree *tree;
     if (level->tree_count >= MAX_TREES) return 0;
     tree = &level->trees[level->tree_count++];
     memset(tree, 0, sizeof(*tree));
@@ -398,7 +398,7 @@ static void remove_encounters_for(LevelData *level, u16 animal_id)
             continue;
         }
         memmove(&level->encounters[i], &level->encounters[i + 1],
-                (level->encounter_count - i - 1) * sizeof(KoloEncounter));
+                (level->encounter_count - i - 1) * sizeof(Encounter));
         --level->encounter_count;
     }
 }
@@ -409,7 +409,7 @@ static int erase_object(LevelData *level, unsigned x, unsigned y)
     for (i = 0; i < level->pickup_count; ++i)
         if (level->pickups[i].x == x && level->pickups[i].y == y) {
             memmove(&level->pickups[i], &level->pickups[i + 1],
-                    (level->pickup_count - i - 1) * sizeof(KoloPickup));
+                    (level->pickup_count - i - 1) * sizeof(Pickup));
             --level->pickup_count;
             return 1;
         }
@@ -417,7 +417,7 @@ static int erase_object(LevelData *level, unsigned x, unsigned y)
         if (level->animals[i].x == x && level->animals[i].y == y) {
             u16 id = level->animals[i].id;
             memmove(&level->animals[i], &level->animals[i + 1],
-                    (level->animal_count - i - 1) * sizeof(KoloAnimalSpawn));
+                    (level->animal_count - i - 1) * sizeof(AnimalSpawn));
             --level->animal_count;
             remove_encounters_for(level, id);
             return 1;
@@ -427,7 +427,7 @@ static int erase_object(LevelData *level, unsigned x, unsigned y)
             u16 id = level->trees[i].id;
             unsigned j;
             memmove(&level->trees[i], &level->trees[i + 1],
-                    (level->tree_count - i - 1) * sizeof(KoloTree));
+                    (level->tree_count - i - 1) * sizeof(Tree));
             --level->tree_count;
             for (j = 0; j < level->animal_count; ++j)
                 if (level->animals[j].tree_id == id) level->animals[j].tree_id = NO_ID;
@@ -439,24 +439,24 @@ static int erase_object(LevelData *level, unsigned x, unsigned y)
 static void handle_property_modal(Editor *editor)
 {
     PropertyModal *prop = &editor->prop;
-    unsigned count = kolo_property_field_count(prop->kind);
-    if (key_pressed(KEY_ESCAPE)) {
+    unsigned count = assets_property_field_count(prop->kind);
+    if (key_pressed(Key::ESCAPE)) {
         editor->assets.level = prop->backup;
         prop->open = 0;
         keyboard_clear_edges();
         return;
     }
-    if (key_pressed(KEY_ENTER)) {
+    if (key_pressed(Key::ENTER)) {
         prop->open = 0;
         editor->dirty = 1;
         keyboard_clear_edges();
         return;
     }
-    if (key_pressed(KEY_UP)) prop->field = prop->field ? prop->field - 1 : count - 1;
-    if (key_pressed(KEY_DOWN)) prop->field = (prop->field + 1) % count;
-    if (key_pressed(KEY_LEFT))
+    if (key_pressed(Key::UP)) prop->field = prop->field ? prop->field - 1 : count - 1;
+    if (key_pressed(Key::DOWN)) prop->field = (prop->field + 1) % count;
+    if (key_pressed(Key::LEFT))
         adjust_property(&editor->assets.level, prop->kind, prop->index, prop->field, -1);
-    if (key_pressed(KEY_RIGHT))
+    if (key_pressed(Key::RIGHT))
         adjust_property(&editor->assets.level, prop->kind, prop->index, prop->field, 1);
 }
 
@@ -473,13 +473,13 @@ static void open_property_modal(Editor *editor, unsigned kind, unsigned index)
 /* Returns 0 when the editor should close. */
 static int handle_exit_confirm(Editor *editor)
 {
-    if (key_pressed(KEY_ENTER)) {
+    if (key_pressed(Key::ENTER)) {
         if (level_save(&editor->assets.level, editor->filename,
                        editor->error, sizeof(editor->error))) return 0;
         editor->confirm_exit = 0;
-    } else if (key_pressed(KEY_DELETE)) {
+    } else if (key_pressed(Key::DELETE)) {
         return 0;
-    } else if (key_pressed(KEY_ESCAPE)) {
+    } else if (key_pressed(Key::ESCAPE)) {
         editor->confirm_exit = 0;
     }
     return 1;
@@ -487,11 +487,11 @@ static int handle_exit_confirm(Editor *editor)
 
 static void move_cursor(Editor *editor)
 {
-    if (key_pressed(KEY_LEFT) && editor->cursor_x) --editor->cursor_x;
-    if (key_pressed(KEY_RIGHT) && editor->cursor_x + 1 < editor->assets.level.width)
+    if (key_pressed(Key::LEFT) && editor->cursor_x) --editor->cursor_x;
+    if (key_pressed(Key::RIGHT) && editor->cursor_x + 1 < editor->assets.level.width)
         ++editor->cursor_x;
-    if (key_pressed(KEY_UP) && editor->cursor_y) --editor->cursor_y;
-    if (key_pressed(KEY_DOWN) && editor->cursor_y + 1 < LEVEL_HEIGHT)
+    if (key_pressed(Key::UP) && editor->cursor_y) --editor->cursor_y;
+    if (key_pressed(Key::DOWN) && editor->cursor_y + 1 < LEVEL_HEIGHT)
         ++editor->cursor_y;
 }
 
@@ -523,7 +523,7 @@ static void erase_at_cursor(Editor *editor)
     }
 }
 
-static void place_marker(Editor *editor, KoloPoint *marker)
+static void place_marker(Editor *editor, Point *marker)
 {
     marker->x = (u16)editor->cursor_x;
     marker->y = (u16)editor->cursor_y;
@@ -533,38 +533,38 @@ static void place_marker(Editor *editor, KoloPoint *marker)
 static void handle_editing(Editor *editor)
 {
     LevelData *level = &editor->assets.level;
-    if (key_pressed(KEY_F1)) {
+    if (key_pressed(Key::F1)) {
         editor->help = 1;
         keyboard_clear_edges();
     }
-    if (key_pressed(KEY_ESCAPE)) {
+    if (key_pressed(Key::ESCAPE)) {
         editor->confirm_exit = 1;
         keyboard_clear_edges();
     }
     move_cursor(editor);
-    if (key_pressed(KEY_TAB)) editor->layer = (editor->layer + 1) % LAYER_COUNT;
-    if (key_pressed(KEY_PAGE_UP)) editor->tool = (editor->tool + 1) % TOOL_COUNT;
-    if (key_pressed(KEY_PAGE_DOWN))
+    if (key_pressed(Key::TAB)) editor->layer = (editor->layer + 1) % LAYER_COUNT;
+    if (key_pressed(Key::PAGE_UP)) editor->tool = (editor->tool + 1) % TOOL_COUNT;
+    if (key_pressed(Key::PAGE_DOWN))
         editor->tool = editor->tool ? editor->tool - 1 : TOOL_COUNT - 1;
-    if (key_pressed(KEY_SPACE)) paint_at_cursor(editor);
-    if (key_pressed(KEY_DELETE)) erase_at_cursor(editor);
-    if (key_pressed(KEY_1)) place_marker(editor, &level->start);
-    if (key_pressed(KEY_2)) {
+    if (key_pressed(Key::SPACE)) paint_at_cursor(editor);
+    if (key_pressed(Key::DELETE)) erase_at_cursor(editor);
+    if (key_pressed(Key::DIGIT_1)) place_marker(editor, &level->start);
+    if (key_pressed(Key::DIGIT_2)) {
         if (!level->checkpoint_count) level->checkpoint_count = 1;
         place_marker(editor, &level->checkpoints[0]);
     }
-    if (key_pressed(KEY_3)) place_marker(editor, &level->exit);
-    if (key_pressed(KEY_ENTER) && editor->layer == LAYER_OBJECT) {
+    if (key_pressed(Key::DIGIT_3)) place_marker(editor, &level->exit);
+    if (key_pressed(Key::ENTER) && editor->layer == LAYER_OBJECT) {
         unsigned kind, index;
         if (find_object(level, editor->cursor_x, editor->cursor_y, &kind, &index))
             open_property_modal(editor, kind, index);
     }
-    if (key_pressed(KEY_F2) &&
+    if (key_pressed(Key::F2) &&
         level_save(level, editor->filename, editor->error, sizeof(editor->error)))
         editor->dirty = 0;
-    if (key_pressed(KEY_F3))
+    if (key_pressed(Key::F3))
         editor->valid = level_validate(level, editor->error, sizeof(editor->error));
-    if (key_pressed(KEY_F4)) open_property_modal(editor, PropertyKind::LEVEL, 0);
+    if (key_pressed(Key::F4)) open_property_modal(editor, PropertyKind::LEVEL, 0);
 }
 
 static void render_editor(Editor *editor)
@@ -591,8 +591,8 @@ static int editor_selftest(void)
 {
     const char *path = "EDITTEST.KLV";
     LevelData level, check, backup;
-    KoloAnimalSpawn *animal;
-    KoloEncounter *encounter;
+    AnimalSpawn *animal;
+    Encounter *encounter;
     char error[ERROR_SIZE];
     unsigned field;
     remove(path);
@@ -743,7 +743,7 @@ int main(int argc, char **argv)
         if (editor.prop.open) {
             handle_property_modal(&editor);
         } else if (editor.help) {
-            if (key_pressed(KEY_F1) || key_pressed(KEY_ESCAPE)) {
+            if (key_pressed(Key::F1) || key_pressed(Key::ESCAPE)) {
                 editor.help = 0;
                 keyboard_clear_edges();
             }

@@ -96,7 +96,7 @@ static void id_debug_message(const char *text)
     outp(ID_COMMAND, ID_CMD_FLUSH_WRITE);
 }
 
-int kolo_trace_host_channel(void)
+int trace_host_channel(void)
 {
     if (id_state < 0) id_state = id_probe();
     return id_state > 0;
@@ -106,18 +106,18 @@ int kolo_trace_host_channel(void)
 
 static void id_debug_message(const char *text) { (void)text; }
 
-int kolo_trace_host_channel(void) { return 0; }
+int trace_host_channel(void) { return 0; }
 
 #endif
 
-void kolo_trace_reset(void)
+void trace_reset(void)
 {
     next_slot = 0;
     used = 0;
     dropped = 0;
 }
 
-void kolo_trace_record(const char *format, ...)
+void trace_record(const char *format, ...)
 {
     va_list args;
     va_start(args, format);
@@ -130,13 +130,13 @@ void kolo_trace_record(const char *format, ...)
     else ++dropped;
 }
 
-void kolo_trace_dump(const char *reason)
+void trace_dump(const char *reason)
 {
     unsigned i;
     unsigned start = (next_slot + TRACE_ENTRIES - used) % TRACE_ENTRIES;
     printf("KOLOBOK TRACE %s: %u entries", reason ? reason : "dump", used);
     if (dropped) printf(", %u older dropped", dropped);
-    if (kolo_trace_host_channel()) printf(", also streamed to the emulator log");
+    if (trace_host_channel()) printf(", also streamed to the emulator log");
     printf("\n");
     for (i = 0; i < used; ++i)
         printf("  %s\n", ring[(start + i) % TRACE_ENTRIES]);
@@ -146,6 +146,6 @@ void kolo_trace_dump(const char *reason)
 
 /* ISO C forbids an empty translation unit, and this file is compiled into every
  * target so that enabling the trace never requires touching a build script. */
-typedef int kolo_trace_disabled;
+typedef int trace_disabled;
 
 #endif

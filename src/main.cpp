@@ -510,7 +510,7 @@ static void bot_report_failure(const GameState *game, unsigned stage, unsigned f
            game->player.vx, game->player.vy, game->player.on_ground,
            game->red_collected, game->guardian_solved,
            game->player.hp, game->player.lives);
-    kolo_trace_dump("playtest stage failed");
+    trace_dump("playtest stage failed");
 }
 
 static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
@@ -522,7 +522,7 @@ static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
     game_init_carry(&game, assets, *hp, *lives);
     memset(abandoned, 0, sizeof(abandoned));
     budget = (unsigned)assets->level.width * BOT_FRAMES_PER_COLUMN;
-    kolo_trace_reset();
+    trace_reset();
     KOLO_LOG(("stage %u start w=%u need=%u hp=%u lv=%u", stage,
               (unsigned)assets->level.width, (unsigned)assets->level.required_red,
               (unsigned)*hp, (unsigned)*lives));
@@ -580,11 +580,11 @@ static int campaign_playtest(AssetPack *assets, char *error, unsigned error_size
 static void read_game_input(GameInput *input)
 {
     memset(input, 0, sizeof(*input));
-    input->left = (u8)(key_down(KEY_LEFT) || key_down(KEY_A));
-    input->right = (u8)(key_down(KEY_RIGHT) || key_down(KEY_D));
-    input->jump_held = (u8)(key_down(KEY_SPACE) || key_down(KEY_UP));
-    input->jump_pressed = (u8)(key_pressed(KEY_SPACE) || key_pressed(KEY_UP));
-    input->talk_pressed = (u8)key_pressed(KEY_ENTER);
+    input->left = (u8)(key_down(Key::LEFT) || key_down(Key::A));
+    input->right = (u8)(key_down(Key::RIGHT) || key_down(Key::D));
+    input->jump_held = (u8)(key_down(Key::SPACE) || key_down(Key::UP));
+    input->jump_pressed = (u8)(key_pressed(Key::SPACE) || key_pressed(Key::UP));
+    input->talk_pressed = (u8)key_pressed(Key::ENTER);
 }
 
 /* Only the letters the three codewords are spelled from are accepted, which keeps
@@ -592,11 +592,11 @@ static void read_game_input(GameInput *input)
 static void append_code_key(char *word, unsigned *length)
 {
     static const struct { unsigned key; char letter; } letters[] = {
-        {KEY_R, 'R'}, {KEY_E, 'E'}, {KEY_P, 'P'}, {KEY_K, 'K'}, {KEY_A, 'A'},
-        {KEY_T, 'T'}, {KEY_M, 'M'}, {KEY_O, 'O'}, {KEY_Z, 'Z'}
+        {Key::R, 'R'}, {Key::E, 'E'}, {Key::P, 'P'}, {Key::K, 'K'}, {Key::A, 'A'},
+        {Key::T, 'T'}, {Key::M, 'M'}, {Key::O, 'O'}, {Key::Z, 'Z'}
     };
     unsigned i;
-    if (key_pressed(KEY_BACKSPACE)) {
+    if (key_pressed(Key::BACKSPACE)) {
         if (*length) word[--*length] = 0;
         return;
     }
@@ -700,10 +700,10 @@ typedef struct TitleMenu {
 static int run_title(App *app, TitleMenu *title, UiState *ui,
                      unsigned *intro_scene, u32 *ui_ticks)
 {
-    if (key_pressed(KEY_UP)) title->selection = title->selection ? title->selection - 1 : 2;
-    if (key_pressed(KEY_DOWN)) title->selection = (title->selection + 1) % 3;
-    if (key_pressed(KEY_ESCAPE)) return 0;
-    if (key_pressed(KEY_ENTER) || key_pressed(KEY_SPACE)) {
+    if (key_pressed(Key::UP)) title->selection = title->selection ? title->selection - 1 : 2;
+    if (key_pressed(Key::DOWN)) title->selection = (title->selection + 1) % 3;
+    if (key_pressed(Key::ESCAPE)) return 0;
+    if (key_pressed(Key::ENTER) || key_pressed(Key::SPACE)) {
         if (title->selection == 2) return 0;
         if (title->selection == 1) {
             *ui = UI_CODE;
@@ -790,24 +790,24 @@ int main(int argc, char **argv)
         speaker_tick();
         music_tick();
         ++ui_ticks;
-        if (key_pressed(KEY_S)) {
+        if (key_pressed(Key::S)) {
             sound_on = !sound_on;
             speaker_shutdown();
             speaker_init(sound_on);
         }
-        if (key_pressed(KEY_M)) music_set_enabled(!music_is_enabled());
+        if (key_pressed(Key::M)) music_set_enabled(!music_is_enabled());
 
         if (ui == UI_TITLE) {
             running = run_title(&app, &title, &ui, &intro_scene, &ui_ticks);
             continue;
         }
         if (ui == UI_CODE) {
-            if (key_pressed(KEY_ESCAPE)) {
+            if (key_pressed(Key::ESCAPE)) {
                 ui = UI_TITLE;
                 keyboard_clear_edges();
             } else {
                 append_code_key(title.codeword, &title.length);
-                if (key_pressed(KEY_ENTER)) {
+                if (key_pressed(Key::ENTER)) {
                     int selected = campaign_codeword_stage(title.codeword);
                     if (selected < 0) {
                         title.invalid = 1;
@@ -826,10 +826,10 @@ int main(int argc, char **argv)
             continue;
         }
         if (ui == UI_INTRO) {
-            if (key_pressed(KEY_ESCAPE)) {
+            if (key_pressed(Key::ESCAPE)) {
                 intro_scene = 4;
                 keyboard_clear_edges();
-            } else if (key_pressed(KEY_ENTER) || ui_ticks >= 135) {
+            } else if (key_pressed(Key::ENTER) || ui_ticks >= 135) {
                 ++intro_scene;
                 ui_ticks = 0;
                 keyboard_clear_edges();
@@ -844,8 +844,8 @@ int main(int argc, char **argv)
             }
         }
         if (ui == UI_PAUSE) {
-            if (key_pressed(KEY_ESCAPE)) running = 0;
-            else if (key_pressed(KEY_ENTER)) {
+            if (key_pressed(Key::ESCAPE)) running = 0;
+            else if (key_pressed(Key::ENTER)) {
                 ui = UI_PLAY;
                 keyboard_clear_edges();
             }
@@ -854,7 +854,7 @@ int main(int argc, char **argv)
             continue;
         }
         if (ui == UI_ENDING) {
-            if (key_pressed(KEY_ENTER) && ui_ticks > 180) {
+            if (key_pressed(Key::ENTER) && ui_ticks > 180) {
                 ui = UI_CREDITS;
                 ui_ticks = 0;
             }
@@ -863,7 +863,7 @@ int main(int argc, char **argv)
             continue;
         }
         if (ui == UI_CREDITS) {
-            if ((key_pressed(KEY_ENTER) && ui_ticks > 420) || key_pressed(KEY_ESCAPE)) {
+            if ((key_pressed(Key::ENTER) && ui_ticks > 420) || key_pressed(Key::ESCAPE)) {
                 if (!enter_title(&app)) break;
                 ui = UI_TITLE;
             } else {
@@ -873,7 +873,7 @@ int main(int argc, char **argv)
             continue;
         }
         if (app.game.game_over) {
-            if (key_pressed(KEY_ENTER)) {
+            if (key_pressed(Key::ENTER)) {
                 if (!enter_title(&app)) break;
                 ui = UI_TITLE;
             }
@@ -882,13 +882,13 @@ int main(int argc, char **argv)
             continue;
         }
         if (app.game.active_dialogue) {
-            if (key_pressed(KEY_UP))
+            if (key_pressed(Key::UP))
                 dialogue_choice = dialogue_choice ? dialogue_choice - 1 : 2;
-            if (key_pressed(KEY_DOWN)) dialogue_choice = (dialogue_choice + 1) % 3;
-            if (key_pressed(KEY_1)) dialogue_choice = 0;
-            if (key_pressed(KEY_2)) dialogue_choice = 1;
-            if (key_pressed(KEY_3)) dialogue_choice = 2;
-            if (key_pressed(KEY_ENTER)) {
+            if (key_pressed(Key::DOWN)) dialogue_choice = (dialogue_choice + 1) % 3;
+            if (key_pressed(Key::DIGIT_1)) dialogue_choice = 0;
+            if (key_pressed(Key::DIGIT_2)) dialogue_choice = 1;
+            if (key_pressed(Key::DIGIT_3)) dialogue_choice = 2;
+            if (key_pressed(Key::ENTER)) {
                 game_answer_dialogue(&app.game, dialogue_choice);
                 keyboard_clear_edges();
             }
@@ -896,7 +896,7 @@ int main(int argc, char **argv)
             video_present();
             continue;
         }
-        if (key_pressed(KEY_ESCAPE)) {
+        if (key_pressed(Key::ESCAPE)) {
             ui = UI_PAUSE;
             keyboard_clear_edges();
             continue;
