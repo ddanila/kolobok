@@ -104,6 +104,8 @@ python3 tools/levels.py import level.json LEVEL.KLV
 See [formats.md](docs/formats.md), [music.md](docs/music.md), and
 [performance.md](docs/performance.md) for the binary contracts, music
 provenance, and benchmark method.
+[flicker-analysis.md](docs/flicker-analysis.md) records untested hypotheses for
+the residual page-flip flicker seen under DOSBox-X.
 
 ## License
 
