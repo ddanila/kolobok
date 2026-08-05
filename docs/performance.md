@@ -69,6 +69,10 @@ between those buckets.
 - CRTC display-start page flipping plus 0–3 pixel attribute-controller panning.
 - Pel-panning writes retain the attribute controller's display-enable bit, avoiding
   a transient blank during every page flip.
+- The start address is armed before the retrace that latches it and the retrace
+  wait follows, so `video_present` returns only once the new page is on screen
+  and the page it vacated is safe to draw into. Pel pan is written inside that
+  same blanking interval, so base and pan always take effect on one frame.
 - VGA-resident planar tile patterns copied with write-mode-1 latches.
 - Generic opaque-span sprites for clipped edges and 16 alignment/plane-specific
   RLE span streams per sprite for the common fully visible path.

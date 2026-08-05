@@ -193,13 +193,27 @@ static void set_mode_x(void)
     clear_vram_386(0);
 }
 
-static void set_display_start(unsigned base, unsigned char pan)
+/* The CRTC latches the start address at the onset of vertical retrace, so this
+ * must be written before the retrace that should show it, never after. */
+static void set_start_address(unsigned base)
 {
     outpw(0x3d4, 0x0c | (base & 0xff00));
     outpw(0x3d4, 0x0d | ((base & 0x00ff) << 8));
+}
+
+/* Index 0x33 keeps the attribute controller's display-enable bit set, which
+ * avoids a transient blank. Write this inside blanking. */
+static void set_pel_pan(unsigned char pan)
+{
     (void)inp(0x3da);
     outp(0x3c0, 0x33);
     outp(0x3c0, (unsigned char)(pan * 2));
+}
+
+static void set_display_start(unsigned base, unsigned char pan)
+{
+    set_start_address(base);
+    set_pel_pan(pan);
 }
 
 static void wait_vblank(void)
@@ -666,8 +680,14 @@ void video_present(void)
     u16 stage;
     if (profile_enabled) stage = platform_profile_timer_read();
     if (flip_pending) {
+        /* Arm the flip first so the coming retrace latches it, then wait for
+         * that retrace so this returns only once the new page is on screen and
+         * the page just vacated is safe to draw into. Waiting first would post
+         * the write immediately after the latch, leaving the old page on screen
+         * for one more refresh while the renderer drew into it. */
+        set_start_address(pending_base);
         if (vsync_enabled) wait_vblank();
-        set_display_start(pending_base, pending_pan);
+        set_pel_pan(pending_pan);
         display_base = pending_base;
         display_pan = pending_pan;
         flip_pending = 0;

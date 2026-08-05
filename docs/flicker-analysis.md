@@ -6,6 +6,14 @@ instead of a free-running toggle.
 
 This document records candidate explanations and how to test each one.
 
+## Status
+
+Hypotheses 1 and 2 are diagnosed and fixed by the `video_present` reordering
+described in step 3 below. The automated suite passes with the change, but the
+gameplay flicker has not yet been confirmed gone by eye; that verification is
+outstanding. Hypothesis 3 is unchanged on disk and is now believed harmless for
+flicker, though it remains real as a pacing irregularity.
+
 ## Observation of 2026-08-05
 
 On the DOSBox-X title screen the title artwork is stable while the menu box and
@@ -164,20 +172,37 @@ against a DOSBox-X frame capture rather than against reconstructed VRAM.
 2. ~~Compare the pause screen against the menu.~~ Done: pause is stable, the
    menu blinks. With the flip-only explanation excluded above, the fault is
    drawing reaching the page being scanned, not the flip mechanics.
-3. **Invert the order in `video_present`:** write the start address first, then
-   `wait_vblank`, then the pel pan. If flicker disappears, hypothesis 1 is
-   confirmed and hypothesis 2 is resolved by the same change.
+3. ~~Invert the order in `video_present`.~~ Applied. `set_display_start` is
+   split into `set_start_address` and `set_pel_pan`, and `video_present` now
+   arms the flip, waits for the retrace that latches it, then writes pel pan
+   inside that blanking interval. `video_present` therefore returns only once
+   the new page is actually on screen, which is what makes the page it vacated
+   safe for `begin_hidden_frame` to draw into. Awaiting visual confirmation in
+   gameplay.
 4. **Instrument the pacing.** Log the delta between successive `wait_for_frame`
    releases to confirm or reject the 55 ms burst pattern of hypothesis 3, which
-   is the one unverified link in the chain.
+   is the one unverified link in the chain. Lower priority now: with the flip
+   synchronous, a frame released early still draws into a genuinely hidden page,
+   so the burst pattern should no longer be able to cause flicker.
 5. **Try `output=opengl` with host vsync** to separate a DOSBox-X presentation
-   artifact from a guest-side page-flip artifact.
+   artifact from a guest-side page-flip artifact. Only worth doing if flicker
+   survives step 3, since a host-side blit tear is a different symptom.
 6. **Skip redundant UI flips** by tracking whether the menu content actually
-   changed before queueing a flip. This would mask menu flicker without fixing
-   gameplay flicker, so it is a cleanup rather than a fix, and it should not be
-   applied before step 3 or it will hide the evidence.
+   changed before queueing a flip. This masks menu flicker rather than fixing
+   it, so it is a cleanup to consider only once step 3 is confirmed by eye.
 
-Steps 2 and 5 are observation or configuration only. Step 3 is the single change
-most likely to resolve the issue and should be measured with `make perf-test`
-afterwards, since moving the retrace wait changes where the frame budget is
-spent.
+## Measured cost of the step 3 change
+
+`make test` passes with the change: the 386DX-40 gate, the three-level playtest,
+and the DOS selftest including its visible-page assertions.
+
+Raw throughput was measured at 54.6 fps with the change against 54.5 fps without
+it on the same host, so the reordering costs nothing detectable. Both figures sit
+below the 57.4 fps recorded in `performance.md` because that table was measured
+on the Linux host with DOSBox-X 2026.01.02, while these runs used macOS arm64
+with a Homebrew DOSBox-X; the per-stage profile counters are unchanged between
+the two builds, which is what rules out a rendering regression. Presentation
+ticks rose from 997 to 1054 across 60 frames, roughly 0.001 ms per frame.
+
+The raw benchmark runs with vsync disabled and so does not exercise
+`wait_vblank` at all. The paced measurement, which does, held at 30.3 fps.
