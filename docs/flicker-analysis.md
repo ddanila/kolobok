@@ -22,12 +22,12 @@ hypothesis 1 below, and it invalidates the discriminating test this document
 originally proposed.
 
 Note first that `video_render_title` is declared in `video.h` but never called;
-`UI_TITLE` renders the menu on every tick (`src/main.c:185`). "Title screen" and
+`UI_TITLE` renders the menu on every tick (`src/main.c:243`). "Title screen" and
 "menu screen" are therefore the same frame, and the report distinguishes two
 regions of it rather than two screens.
 
 Each menu frame starts with `latch_copy(TITLE_PAGE, draw_base, PAGE_SIZE)` in
-`begin_title_frame` (`src/video.c:709`), which stamps the cached template over
+`begin_title_frame` (`src/video.c:729`), which stamps the cached template over
 the whole page. In the title-artwork region that copy writes *the same pixel
 values that are already there*, so it is idempotent and invisible even if it
 lands on the page currently being scanned. That region is structurally incapable
@@ -54,39 +54,39 @@ content, so both game pages hold identical bytes, and flipping between identical
 pages cannot produce a visible change. Concurrent drawing is the only remaining
 mechanism.
 
-## 1. The flip is programmed after the CRTC latch, not before
+## 1. The flip was programmed after the CRTC latch, not before
 
-`video_present` (`src/video.c:664`) waits for retrace and *then* writes the new
-display start:
+**Diagnosed and fixed by step 3.** Before that reordering, `video_present` waited
+for retrace and *then* wrote the new display start:
 
 ```
 wait_vblank();
 set_display_start(pending_base, pending_pan);
 ```
 
-`wait_vblank` (`src/video.c:205`) returns on the *leading* edge of vertical
+`wait_vblank` (`src/video.c:219`) returns on the *leading* edge of vertical
 retrace — it spins until bit 3 of port 0x3DA goes high. DOSBox-X latches the
 CRTC display-start address on the same event that raises that bit, so by the
-time the poll observes it the latch has already happened. The write to CRTC
-0x0C/0x0D therefore lands just after the latch and does not take effect until
+time the poll observed it the latch had already happened. The write to CRTC
+0x0C/0x0D therefore landed just after the latch and did not take effect until
 the *following* retrace.
 
-If that is what happens, the consequence is deterministic rather than a race:
+The consequence was deterministic rather than a race:
 
-- The flip becomes visible one full refresh (~14.3 ms at 70 Hz) later than the
-  code assumes.
-- `display_base` is updated immediately, so during that late refresh
-  `begin_hidden_frame` (`src/video.c:681`) would select the page the CRTC is
-  *still scanning*. This only bites when the next frame starts drawing inside
-  the late window; see hypothesis 3 for why that happens on some frames.
-- A frame takes roughly 17 ms to draw (6.35 ms background, 5.75 ms tiles,
+- The flip became visible one full refresh (~14.3 ms at 70 Hz) later than the
+  code assumed.
+- `display_base` was updated immediately, so during that late refresh
+  `begin_hidden_frame` (`src/video.c:701`) selected the page the CRTC was
+  *still scanning*. This only bit when the next frame started drawing inside
+  the late window; see hypothesis 3 for why that happened on some frames.
+- A frame takes roughly 17 ms to draw (6.35 ms background, 5.83 ms tiles,
   2.46 ms sprites, 2.25 ms HUD — see `performance.md`), so the background fill,
-  terrain, and sprites reach the visible page in stages. Sky flashing through
-  before tiles arrive is the expected symptom.
+  terrain, and sprites reached the visible page in stages. Sky flashing through
+  before tiles arrived is the expected symptom.
 
 Commit 1f82862 corrected the software's bookkeeping, but the emulated hardware
-flip would still be one frame behind that bookkeeping, so the nominally hidden
-page is the on-screen page for the duration of the draw.
+flip was still one frame behind that bookkeeping, so the nominally hidden page
+was the on-screen page for the duration of the draw.
 
 The ordering in Abrash's page-flipping discussion is the reverse: program the
 new start address as soon as the frame is finished (it is latched at the next
@@ -99,17 +99,25 @@ start address at the onset of vertical retrace, so writing it after a retrace
 poll misses the same latch on a real 386. Reordering is therefore the correct
 fix on hardware as well, not a DOSBox-X workaround.
 
-## 2. Start address and pel pan take effect on different refreshes
+`video_present` (`src/video.c:678`) now arms the start address, waits for the
+retrace that latches it, and writes pel pan inside that blanking interval.
 
-`set_display_start` (`src/video.c:196`) writes the CRTC start address and the
-attribute-controller pel pan back to back. Under hypothesis 1 the start address
-applies at the next retrace while the AC pel-pan write applies immediately, so
-for one refresh the screen shows the old page base combined with the new pan.
+## 2. Start address and pel pan took effect on different refreshes
+
+**Diagnosed and fixed by step 3.** `set_display_start` wrote the CRTC start
+address and the attribute-controller pel pan back to back. Under hypothesis 1 the
+start address applied at the next retrace while the AC pel-pan write applied
+immediately, so for one refresh the screen showed the old page base combined with
+the new pan.
 
 Every time the camera crosses a 4-pixel boundary the pan wraps 3→0 as the base
 advances, which would produce a one-frame 4-pixel horizontal jump. That is
 separate from hypothesis 1 and would read as scrolling jitter or shimmer rather
 than as element flicker.
+
+The flip path no longer calls `set_display_start`. Step 3 split it into
+`set_start_address` and `set_pel_pan`; the combined helper (`src/video.c:213`)
+now only programs the initial page in `video_init`.
 
 ## 3. Coarse `clock()` granularity makes pacing bursty
 
@@ -121,7 +129,7 @@ next frame starts drawing, and the nominally hidden page really is hidden. A
 second mechanism is needed to explain why the draw sometimes begins before the
 late flip completes.
 
-`wait_for_frame` (`src/main.c:16`) supplies it. It paces on `clock()`, and the
+`wait_for_frame` (`src/main.c:17`) supplies it. It paces on `clock()`, and the
 Watcom DOS headers define `CLOCKS_PER_SEC` as 1000 while the DOS runtime derives
 the value from the 18.2 Hz BIOS tick. The unit is milliseconds but the real
 resolution is about 55 ms, so the counter advances in 55 ms jumps against a
@@ -141,10 +149,10 @@ underlying tick source has been inferred rather than measured.
 
 ## 4. Why the selftest does not catch any of this
 
-`video_vram_crc` (`src/video.c:984`) reconstructs the page named by the
+`video_vram_crc` (`src/video.c:1004`) reconstructs the page named by the
 `display_base` *variable* — the software's belief about what is on screen, not
 what the emulated CRTC is actually scanning. The visible-page assertions in
-`selftest` (`src/main.c:65`) therefore validate the bookkeeping that 1f82862
+`selftest` (`src/main.c:46`) therefore validate the bookkeeping that 1f82862
 already fixed and are blind to a late hardware latch.
 
 A test that could catch it needs to read the CRTC start address back from the
@@ -158,7 +166,7 @@ against a DOSBox-X frame capture rather than against reconstructed VRAM.
   This produces a thin horizontal tear line, not element flicker. Worth ruling
   out by trying `output=opengl` with `vsync=true`.
 - The title and menu paths re-render and flip on every tick even when nothing
-  changed (`src/main.c:185`). Under hypothesis 1 that makes even a static menu
+  changed (`src/main.c:243`). Under hypothesis 1 that made even a static menu
   shimmer.
 - `machine=svga_s3` handles the Mode X CRTC tweaks correctly and is not
   suspected.
@@ -202,7 +210,8 @@ below the 57.4 fps recorded in `performance.md` because that table was measured
 on the Linux host with DOSBox-X 2026.01.02, while these runs used macOS arm64
 with a Homebrew DOSBox-X; the per-stage profile counters are unchanged between
 the two builds, which is what rules out a rendering regression. Presentation
-ticks rose from 997 to 1054 across 60 frames, roughly 0.001 ms per frame.
+ticks rose from 997 to 1054 across 60 frames, roughly 0.001 ms per frame; a later
+run of the same build reads 1,051, which is the figure `performance.md` carries.
 
 The raw benchmark runs with vsync disabled and so does not exercise
 `wait_vblank` at all. The paced measurement, which does, held at 30.3 fps.

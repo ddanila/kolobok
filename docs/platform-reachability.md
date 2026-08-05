@@ -9,7 +9,7 @@ out of reach.
 
 The player is 14 px tall and stands at `y = 130` on the ground row. Landing on a
 platform on row `r` is not simply a matter of clearing `r * 16` with the feet.
-`move_horizontal` (`src/game.c:85`) tests the body at `y + 2` and `y + 12`, so
+`move_horizontal` (`src/game.c:87`) tests the body at `y + 2` and `y + 12`, so
 while the lower body is still inside the platform row the player is refused
 entry to the platform's columns and slides along its side. The jump therefore
 has to lift the *top* of the player to `y <= r * 16 - 13`.

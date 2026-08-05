@@ -16,8 +16,14 @@ Deep Forest, and homecoming) each use six two-operator voices, their own
 instrument bank, and compact delta-timed note events. The Deep Forest version
 reharmonizes the melody rather than merely changing tempo or timbre.
 
+Each arrangement is a sixteen-step table whose steps carry their own tick
+duration, so one pass lasts 88 ticks for the title/Garden score, 90 for Small
+Forest, 118 for Deep Forest and 69 for the homecoming, and then loops.
+
 Failed detection silently disables music without changing PC-speaker sound
-effects. Host tests route writes through a mock register sink, verify that all
-six voices sound, prove that the four register streams are distinct, and check
-the exact 192-tick sequence length. The DOS-native self-test additionally checks
-OPL2 detection and 30 Hz event advancement under DOSBox-X.
+effects. Host tests route writes through a mock register sink, drive each
+arrangement for 192 ticks — several passes of the longest score — and verify
+that the sequencer advanced on every tick, that more than 40 note events fired,
+that all six voices sound, and that the four register streams are distinct. The
+DOS-native self-test additionally checks OPL2 detection and 30 Hz event
+advancement under DOSBox-X.

@@ -21,7 +21,7 @@ DOSBox-X only runs and verifies the completed DOS binaries.
 - `1`–`3`, or arrows and Enter: choose dialogue answers
 - `M`: toggle detected AdLib music
 - `S`: toggle PC-speaker effects
-- Escape: skip the intro or pause
+- Escape: skip the intro, or pause; Enter then resumes and Escape quits to DOS
 
 The title menu offers New Game, Codeword, and Quit. `REPKA` starts the Garden
 without its intro, `TEREMOK` starts the Small Forest, and `MOROZKO` starts the
@@ -36,7 +36,8 @@ checkpoint while preserving pickups and solved encounters.
 Red berries open the exit. Blue berries give a refreshable ten-second speed
 boost. Small pies heal and restore up to three lives only when useful. Big pies
 heal, refill to three lives, or grant the fourth bonus life. Stomping an animal
-gives the boosted bounce and freezes it for three seconds.
+freezes it for three seconds and bounces Kolobok back up, slightly lower than a
+full held jump but not cuttable by releasing the jump key.
 
 Command-line options are `-nosound`, `-nomusic`, `-selftest`, `-benchmark`, and
 `-capture [intro|garden|forest|deep|dialogue|frozen|gameover|home|credits]`.
@@ -45,8 +46,8 @@ suite.
 
 ## Build and test
 
-Install GNU Make, Bash, curl, unzip, Python 3 with Pillow, a C compiler, and
-DOSBox-X, then run:
+Install GNU Make, Bash, curl, unzip, `tar` with xz support, Python 3 with
+Pillow, a C compiler, and DOSBox-X, then run:
 
 ```sh
 make
@@ -65,9 +66,11 @@ complete deterministic three-level playthrough, and the 7,350-cycle Deep Forest
 performance gate. The
 gate requires at least 50 raw frames/s and 29.5 paced frames/s.
 
-`make screenshot` captures nine deterministic DOS-native states and records
-their VRAM CRCs. `make dist` creates a redistributable directory containing
-`KOLOBOK.EXE`, `KOLOEDIT.EXE`, `KOLOBOK.DAT`, and all three KLV files.
+`make screenshot` captures nine deterministic DOS-native states into
+`docs/captures/`, records their VRAM CRCs in `docs/captures/CRC32.txt`, and
+refreshes `docs/screenshot.png`. `make dist` creates a redistributable directory
+containing `KOLOBOK.EXE`, `KOLOEDIT.EXE`, `KOLOBOK.DAT`, all three KLV files,
+`README.TXT`, and `LICENSE`.
 
 ## Level editor
 
@@ -81,8 +84,10 @@ Run `KOLOEDIT.EXE LEVEL.KLV`. If no filename is supplied, it prompts for an
 - Enter opens a property form for the selected object. It covers subtype,
   flags, reward/dialogue data, patrol bounds, tree type and climb association
 - `1`, `2`, `3` place start, checkpoint, and exit
-- F2 saves atomically through `LEVEL.TMP`; F3 validates; F4 edits level theme,
-  required-red count, and cloud seed
+- F1 opens the in-editor key reference
+- F2 saves atomically through `LEVEL.TMP` and keeps the file it replaced as
+  `LEVEL.BAK`; F3 validates; F4 edits level theme, required-red count, and
+  cloud seed
 - Escape opens the save/discard/cancel confirmation
 
 `KOLOEDIT.EXE -selftest` performs a create/edit/save/reload/delete cycle entirely
@@ -113,6 +118,9 @@ provenance, and benchmark method.
 investigation, [platform-reachability.md](docs/platform-reachability.md) covers
 jump height versus platform rows, and [tracing.md](docs/tracing.md) explains the
 `make dos-debug` ring-buffer log used to diagnose DOS-native failures.
+`docs/art-direction.png` is the pixel-art reference the tile and sprite work
+aims at. It is a target, not a capture: the shipped 320×200 renderer and its
+24-pixel HUD do not match it feature for feature.
 
 ## License
 

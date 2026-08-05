@@ -62,11 +62,14 @@ DOSBox-X, so treat differences of a few frames per second between hosts as
 emulator variance rather than as a rendering change; the per-stage profile
 counters are the reliable comparison.
 
-The representative 60-frame expanded profile measured 454,274 background ticks,
-411,536 tile ticks, 175,859 sprite ticks, 160,722 HUD ticks, and 997 presentation
-ticks. That averages about 6.35 ms, 5.75 ms, 2.46 ms, 2.25 ms, and 0.014 ms per frame,
+The representative 60-frame expanded profile, measured on the macOS arm64 host
+against the current renderer, reports 454,318 background ticks, 417,439 tile
+ticks, 175,844 sprite ticks, 160,707 HUD ticks, and 1,051 presentation ticks.
+That averages about 6.35 ms, 5.83 ms, 2.46 ms, 2.25 ms, and 0.015 ms per frame,
 respectively. Game simulation, loop overhead, and profiler reads are outside or
-between those buckets.
+between those buckets. Presentation ticks were 997 before `video_present` was
+reordered to arm the flip ahead of the retrace that latches it; see
+[flicker-analysis.md](flicker-analysis.md).
 
 ## Optimized paths
 
@@ -104,7 +107,7 @@ of unchained VGA and page flipping in the
 
 The v4 archive is about 88 KiB, but each indexed active bank is about 22 KiB and
 stays below the enforced 60 KiB limit. The game and editor executables are about
-47 KiB and 49 KiB. The
+48 KiB and 49 KiB. The
 renderer allocates one 64,000-byte conventional-memory scratch image for CRC test
 readback; normal drawing does not use it as a back buffer. Together with the
 loaded program, assets, game state, and stack, active conventional-memory data is

@@ -13,7 +13,7 @@ CONTROLS
   1, 2, 3 or arrows   Dialogue answers
   M                   Toggle AdLib music
   S                   Toggle PC-speaker effects
-  Escape              Skip intro / pause
+  Escape              Skip intro / pause (Enter resumes, Escape quits)
 
 CODEWORDS
   REPKA     Garden (skip intro)
