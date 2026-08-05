@@ -1,7 +1,7 @@
 # Platform reachability
 
 The campaign places platforms on tile rows 7, 6 and 5 above a ground surface on
-row 9. Until now none of them could be landed on, because `KOLO_JUMP_SPEED` was
+row 9. Until now none of them could be landed on, because `JUMP_SPEED` was
 too weak. This note records the geometry, what was changed, and what is still
 out of reach.
 
@@ -28,7 +28,7 @@ above blocks the approach in the first place.
 
 ## What changed
 
-`KOLO_JUMP_SPEED` moved from -850 to -1025, which raises the peak from y=105 to
+`JUMP_SPEED` moved from -850 to -1025, which raises the peak from y=105 to
 roughly y=92 and makes row 7 reachable.
 
 The value was chosen by simulating the real movement code over every run-up

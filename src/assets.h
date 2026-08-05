@@ -18,14 +18,14 @@ typedef u8 *KoloFarPtr;
 typedef const u8 *KoloConstFarPtr;
 #endif
 
-#define KOLO_TILE_SIZE 16
-#define KOLO_LEVEL_HEIGHT 11
-#define KOLO_MAX_PICKUPS 32
-#define KOLO_MAX_ENEMIES 16
-#define KOLO_MAX_TREES 32
-#define KOLO_MAX_CHECKPOINTS 8
-#define KOLO_MAX_ENCOUNTERS 8
-#define KOLO_MAX_SPRITES 15
+#define TILE_SIZE 16
+#define LEVEL_HEIGHT 11
+#define MAX_PICKUPS 32
+#define MAX_ENEMIES 16
+#define MAX_TREES 32
+#define MAX_CHECKPOINTS 8
+#define MAX_ENCOUNTERS 8
+#define MAX_SPRITES 15
 
 struct Theme { enum Enum { GARDEN, FOREST, DEEP, COUNT }; };
 struct PickupType { enum Enum { RED, BLUE, SMALL_PIE, BIG_PIE, COUNT }; };
@@ -73,7 +73,7 @@ struct AnimalField {
 };
 
 /* Stored in the KLV as an absent tree, dialogue or other cross-reference. */
-#define KOLO_NO_ID 0xffff
+#define NO_ID 0xffff
 
 typedef struct KoloPoint { u16 x, y; } KoloPoint;
 
@@ -106,11 +106,11 @@ typedef struct LevelData {
     u8 *map;
     KoloPoint start, exit, home;
     u16 checkpoint_count, pickup_count, animal_count, tree_count, encounter_count;
-    KoloPoint checkpoints[KOLO_MAX_CHECKPOINTS];
-    KoloPickup pickups[KOLO_MAX_PICKUPS];
-    KoloAnimalSpawn animals[KOLO_MAX_ENEMIES];
-    KoloTree trees[KOLO_MAX_TREES];
-    KoloEncounter encounters[KOLO_MAX_ENCOUNTERS];
+    KoloPoint checkpoints[MAX_CHECKPOINTS];
+    KoloPickup pickups[MAX_PICKUPS];
+    KoloAnimalSpawn animals[MAX_ENEMIES];
+    KoloTree trees[MAX_TREES];
+    KoloEncounter encounters[MAX_ENCOUNTERS];
 } LevelData;
 
 typedef struct AssetPack {
@@ -124,8 +124,8 @@ typedef struct AssetPack {
     KoloFarPtr tiles;
     KoloFarPtr tile_flags;
     KoloFarPtr tile_material;
-    KoloFarPtr sprite_spans[KOLO_MAX_SPRITES];
-    KoloFarPtr sprite_planar_spans[KOLO_MAX_SPRITES][16];
+    KoloFarPtr sprite_spans[MAX_SPRITES];
+    KoloFarPtr sprite_planar_spans[MAX_SPRITES][16];
     LevelData level;
 } AssetPack;
 

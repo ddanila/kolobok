@@ -3,29 +3,29 @@
 
 #include "assets.h"
 
-#define KOLO_FP_SHIFT 8
-#define KOLO_FP_ONE 256L
-#define KOLO_SCREEN_W 320
-#define KOLO_SCREEN_H 200
-#define KOLO_PLAYER_W 14
-#define KOLO_PLAYER_H 14
+#define FP_SHIFT 8
+#define FP_ONE 256L
+#define SCREEN_W 320
+#define SCREEN_H 200
+#define PLAYER_W 14
+#define PLAYER_H 14
 /* Where the camera holds the player horizontally: slightly left of centre, so
  * more of the level ahead is visible than behind. */
-#define KOLO_CAMERA_OFFSET 153
+#define CAMERA_OFFSET 153
 /* A full jump must clear a two-tile platform. The player stands at y=130 on the
  * ground row and has to reach y<=99, because below that the lower body is still
  * inside the platform row and move_horizontal refuses to carry it over the edge.
  * -850 peaked at y=105, which made every platform in the campaign unreachable.
  * -950 barely reaches but lands from only 2.5% of run-up timings; -1025 leaves a
  * usable 26% window. Raising this further starts to disturb enemy encounters. */
-#define KOLO_JUMP_SPEED (-1025L)
-#define KOLO_ENEMY_BOUNCE_SPEED (-1000L)
-#define KOLO_BLUE_FRAMES 300
-#define KOLO_FREEZE_FRAMES 90
-#define KOLO_INVULNERABLE_FRAMES 30
-#define KOLO_FULL_HP 100
-#define KOLO_DEFAULT_LIVES 3
-#define KOLO_MAX_LIVES 4
+#define JUMP_SPEED (-1025L)
+#define ENEMY_BOUNCE_SPEED (-1000L)
+#define BLUE_FRAMES 300
+#define FREEZE_FRAMES 90
+#define INVULNERABLE_FRAMES 30
+#define FULL_HP 100
+#define DEFAULT_LIVES 3
+#define MAX_LIVES 4
 
 struct Event {
     enum Enum {
@@ -71,9 +71,9 @@ typedef struct EnemyState {
 typedef struct GameState {
     const AssetPack *assets;
     PlayerState player;
-    EnemyState enemies[KOLO_MAX_ENEMIES];
-    u8 pickup_taken[KOLO_MAX_PICKUPS];
-    u8 encounter_solved[KOLO_MAX_ENCOUNTERS];
+    EnemyState enemies[MAX_ENEMIES];
+    u8 pickup_taken[MAX_PICKUPS];
+    u8 encounter_solved[MAX_ENCOUNTERS];
     u16 red_collected;
     u16 blue_timer;
     u8 active_dialogue;

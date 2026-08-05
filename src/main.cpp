@@ -82,7 +82,7 @@ static int load_title(AssetPack *assets, char *error, unsigned error_size)
 
 static int selftest_metadata(const AssetPack *assets)
 {
-    return assets->level.width == 96 && assets->level.height == KOLO_LEVEL_HEIGHT &&
+    return assets->level.width == 96 && assets->level.height == LEVEL_HEIGHT &&
            assets->level.required_red == 6 && assets_far_memory_active(assets);
 }
 
@@ -96,13 +96,13 @@ static int selftest_gameplay(const AssetPack *assets, GameState *game)
     memset(&input, 0, sizeof(input));
     input.right = 1;
     for (i = 0; i < 30; ++i) game_step(game, &input);
-    if (game->player.vx <= 0 || game->player.hp != KOLO_FULL_HP ||
-        game->player.lives != KOLO_DEFAULT_LIVES) return 0;
+    if (game->player.vx <= 0 || game->player.hp != FULL_HP ||
+        game->player.lives != DEFAULT_LIVES) return 0;
     game_apply_pickup(game, PickupType::BLUE);
-    if (game->blue_timer != KOLO_BLUE_FRAMES) return 0;
+    if (game->blue_timer != BLUE_FRAMES) return 0;
     game->player.hp = 50;
     game_apply_pickup(game, PickupType::SMALL_PIE);
-    return game->player.hp == KOLO_FULL_HP && game->player.lives == KOLO_DEFAULT_LIVES;
+    return game->player.hp == FULL_HP && game->player.lives == DEFAULT_LIVES;
 }
 
 static int selftest_codewords(void)
@@ -219,8 +219,8 @@ static int selftest(AssetPack *assets)
 static void bench_place_camera(GameState *game, unsigned frame, int span)
 {
     int camera = (int)((unsigned long)frame * BENCH_CAMERA_STRIDE % (unsigned long)span);
-    game->camera_x = (s32)camera << KOLO_FP_SHIFT;
-    game->player.x = (s32)(camera + KOLO_CAMERA_OFFSET) << KOLO_FP_SHIFT;
+    game->camera_x = (s32)camera << FP_SHIFT;
+    game->player.x = (s32)(camera + CAMERA_OFFSET) << FP_SHIFT;
 }
 
 static unsigned long fps_times_ten(clock_t elapsed)
@@ -236,7 +236,7 @@ static int benchmark(AssetPack *assets)
     VideoProfile profile;
     clock_t started, elapsed, paced_started, paced_elapsed, next;
     unsigned frame, remainder = 0;
-    int span = (int)assets->level.width * KOLO_TILE_SIZE - KOLO_SCREEN_W;
+    int span = (int)assets->level.width * TILE_SIZE - SCREEN_W;
     game_init(&game, assets);
     memset(&input, 0, sizeof(input));
     input.right = 1;
@@ -285,7 +285,7 @@ static int benchmark(AssetPack *assets)
     printf("KOLOBOK PROFILE frames=%u bg=%lu tiles=%lu sprites=%lu hud=%lu vga=%lu hz=%lu\n",
            profile.frames, profile.background_ticks, profile.tile_ticks,
            profile.sprite_ticks, profile.hud_ticks, profile.present_ticks,
-           KOLO_PROFILE_TIMER_HZ);
+           PROFILE_TIMER_HZ);
     return 1;
 }
 
@@ -376,7 +376,7 @@ static BotTarget bot_nearest_pickup(const GameState *game, const u8 *abandoned,
     const LevelData *level = &game->assets->level;
     BotTarget target;
     unsigned best = BOT_NO_TARGET, i;
-    target.x = (int)level->exit.x * KOLO_TILE_SIZE;
+    target.x = (int)level->exit.x * TILE_SIZE;
     target.pickup_index = BOT_NO_TARGET;
     target.is_pickup = 0;
     for (i = 0; i < level->pickup_count; ++i) {
@@ -384,7 +384,7 @@ static BotTarget bot_nearest_pickup(const GameState *game, const u8 *abandoned,
         unsigned distance;
         if (game->pickup_taken[i] || abandoned[i]) continue;
         if (level->pickups[i].y != BOT_PICKUP_ROW) continue;
-        candidate = (int)level->pickups[i].x * KOLO_TILE_SIZE + 4;
+        candidate = (int)level->pickups[i].x * TILE_SIZE + 4;
         distance = (unsigned)abs_int(candidate - player_x);
         if (distance >= best) continue;
         best = distance;
@@ -408,7 +408,7 @@ static int bot_guardian_x(const GameState *game, int fallback_x)
         if (game->encounter_solved[e] || !level->encounters[e].required) continue;
         for (j = 0; j < level->animal_count; ++j)
             if (game->enemies[j].id == level->encounters[e].animal_id)
-                target_x = (int)(game->enemies[j].x >> KOLO_FP_SHIFT);
+                target_x = (int)(game->enemies[j].x >> FP_SHIFT);
     }
     return target_x;
 }
@@ -425,7 +425,7 @@ static void bot_scan_animals(const GameState *game, int player_x, int direction,
     const LevelData *level = &game->assets->level;
     unsigned i;
     for (i = 0; i < level->animal_count; ++i) {
-        int dx = (int)(game->enemies[i].x >> KOLO_FP_SHIFT) - player_x;
+        int dx = (int)(game->enemies[i].x >> FP_SHIFT) - player_x;
         if (bot_encounter_pending(game, game->enemies[i].id)) {
             if (dx > -BOT_GUARDIAN_REACH && dx < BOT_GUARDIAN_REACH) *talk_near = 1;
             continue;
@@ -441,17 +441,17 @@ static int bot_hazard_ahead(const GameState *game, int player_x, int direction)
     int probe;
     for (probe = 12; probe <= 64; probe += 8)
         if (game_tile_hazard(game, player_x + direction * probe,
-                             KOLO_LEVEL_HEIGHT * KOLO_TILE_SIZE - 8)) return 1;
+                             LEVEL_HEIGHT * TILE_SIZE - 8)) return 1;
     return 0;
 }
 
 /* Only jump from the ground row. Every required pickup sits there, so the bot has
  * no reason to climb, and jumping while already standing on a platform used to
  * walk it up a staircase it could not descend. Standing on the ground row puts
- * the top of the player at (KOLO_LEVEL_HEIGHT-2)*16 - KOLO_PLAYER_H. */
+ * the top of the player at (LEVEL_HEIGHT-2)*16 - PLAYER_H. */
 static int bot_on_ground_row(const GameState *game, int player_y)
 {
-    int ground_top = (KOLO_LEVEL_HEIGHT - 2) * KOLO_TILE_SIZE - KOLO_PLAYER_H;
+    int ground_top = (LEVEL_HEIGHT - 2) * TILE_SIZE - PLAYER_H;
     return game->player.on_ground && player_y >= ground_top - 4;
 }
 
@@ -506,7 +506,7 @@ static void bot_report_failure(const GameState *game, unsigned stage, unsigned f
     printf("KOLOBOK PLAYTEST FAIL stage=%u frame=%u x=%d y=%d vx=%ld vy=%ld "
            "ground=%u red=%u guardian=%u hp=%u lives=%u\n",
            stage, frame,
-           (int)(game->player.x >> KOLO_FP_SHIFT), (int)(game->player.y >> KOLO_FP_SHIFT),
+           (int)(game->player.x >> FP_SHIFT), (int)(game->player.y >> FP_SHIFT),
            game->player.vx, game->player.vy, game->player.on_ground,
            game->red_collected, game->guardian_solved,
            game->player.hp, game->player.lives);
@@ -517,7 +517,7 @@ static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
 {
     GameState game;
     GameInput input;
-    u8 abandoned[KOLO_MAX_PICKUPS];
+    u8 abandoned[MAX_PICKUPS];
     unsigned frame, budget, stall = 0, last_target = BOT_NO_TARGET;
     game_init_carry(&game, assets, *hp, *lives);
     memset(abandoned, 0, sizeof(abandoned));
@@ -527,8 +527,8 @@ static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
               (unsigned)assets->level.width, (unsigned)assets->level.required_red,
               (unsigned)*hp, (unsigned)*lives));
     for (frame = 0; frame < budget && !game.won && !game.game_over; ++frame) {
-        int player_x = (int)(game.player.x >> KOLO_FP_SHIFT);
-        int player_y = (int)(game.player.y >> KOLO_FP_SHIFT);
+        int player_x = (int)(game.player.x >> FP_SHIFT);
+        int player_y = (int)(game.player.y >> FP_SHIFT);
         BotTarget target;
         if (game.active_dialogue) {
             unsigned encounter = (unsigned)game.active_encounter;
@@ -563,7 +563,7 @@ static int playtest_stage(AssetPack *assets, unsigned stage, u8 *hp, u8 *lives)
 
 static int campaign_playtest(AssetPack *assets, char *error, unsigned error_size)
 {
-    u8 hp = KOLO_FULL_HP, lives = KOLO_DEFAULT_LIVES;
+    u8 hp = FULL_HP, lives = DEFAULT_LIVES;
     unsigned stage;
     int passed = 1;
     assets_free(assets);
@@ -812,7 +812,7 @@ int main(int argc, char **argv)
                     if (selected < 0) {
                         title.invalid = 1;
                     } else if (!enter_stage(&app, (unsigned)selected,
-                                           KOLO_FULL_HP, KOLO_DEFAULT_LIVES)) {
+                                           FULL_HP, DEFAULT_LIVES)) {
                         break;
                     } else {
                         music_play(stage_music[app.stage]);
@@ -835,7 +835,7 @@ int main(int argc, char **argv)
                 keyboard_clear_edges();
             }
             if (intro_scene >= 4) {
-                if (!enter_stage(&app, STAGE_GARDEN, KOLO_FULL_HP, KOLO_DEFAULT_LIVES)) break;
+                if (!enter_stage(&app, STAGE_GARDEN, FULL_HP, DEFAULT_LIVES)) break;
                 ui = UI_PLAY;
             } else {
                 video_render_intro(&app.assets, intro_scene, ui_ticks);

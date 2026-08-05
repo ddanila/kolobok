@@ -36,7 +36,7 @@ enum KoloKey {
     KEY_RIGHT = 0x4d
 };
 
-#define KOLO_PROFILE_TIMER_HZ 1193182UL
+#define PROFILE_TIMER_HZ 1193182UL
 
 int keyboard_install(void);
 void keyboard_remove(void);

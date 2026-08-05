@@ -42,19 +42,19 @@
 
 typedef struct SurfaceGrip { s32 accel, reverse, max_speed, brake; } SurfaceGrip;
 
-static s32 fp(int value) { return (s32)value << KOLO_FP_SHIFT; }
-static int px(s32 value) { return (int)(value >> KOLO_FP_SHIFT); }
+static s32 fp(int value) { return (s32)value << FP_SHIFT; }
+static int px(s32 value) { return (int)(value >> FP_SHIFT); }
 static int iabs(int value) { return value < 0 ? -value : value; }
-static int tiles_to_px(int tiles) { return tiles * KOLO_TILE_SIZE; }
+static int tiles_to_px(int tiles) { return tiles * TILE_SIZE; }
 
 static u8 tile_at(const GameState *game, int x, int y)
 {
     const LevelData *level = &game->assets->level;
     int tx, ty;
-    if (x < 0 || x >= (int)level->width * KOLO_TILE_SIZE) return Tile::GRASS_BODY;
+    if (x < 0 || x >= (int)level->width * TILE_SIZE) return Tile::GRASS_BODY;
     if (y < 0) return Tile::AIR;
-    tx = x / KOLO_TILE_SIZE;
-    ty = y / KOLO_TILE_SIZE;
+    tx = x / TILE_SIZE;
+    ty = y / TILE_SIZE;
     if (ty >= level->height) return Tile::SPIKES;
     return level->map[ty * level->width + tx];
 }
@@ -94,7 +94,7 @@ void game_respawn(GameState *game)
     p->x = game->checkpoint_x;
     p->y = game->checkpoint_y;
     p->vx = p->vy = 0;
-    p->invulnerable = KOLO_INVULNERABLE_FRAMES;
+    p->invulnerable = INVULNERABLE_FRAMES;
     p->on_ground = p->enemy_bounce = 0;
     ++game->respawns;
 }
@@ -111,7 +111,7 @@ void game_lose_life(GameState *game)
         event_add(game, Event::GAME_OVER);
         return;
     }
-    game->player.hp = KOLO_FULL_HP;
+    game->player.hp = FULL_HP;
     game_respawn(game);
 }
 
@@ -150,13 +150,13 @@ static void spawn_enemies(GameState *game)
 /* Zero means "unspecified", which is how a fresh game asks for the defaults. */
 static u8 starting_hp(u8 requested)
 {
-    return requested ? requested : KOLO_FULL_HP;
+    return requested ? requested : FULL_HP;
 }
 
 static u8 starting_lives(u8 requested)
 {
-    if (!requested) return KOLO_DEFAULT_LIVES;
-    return requested > KOLO_MAX_LIVES ? KOLO_MAX_LIVES : requested;
+    if (!requested) return DEFAULT_LIVES;
+    return requested > MAX_LIVES ? MAX_LIVES : requested;
 }
 
 static void initialize(GameState *game, const AssetPack *assets, u8 hp, u8 lives)
@@ -176,7 +176,7 @@ static void initialize(GameState *game, const AssetPack *assets, u8 hp, u8 lives
 
 void game_init(GameState *game, const AssetPack *assets)
 {
-    initialize(game, assets, KOLO_FULL_HP, KOLO_DEFAULT_LIVES);
+    initialize(game, assets, FULL_HP, DEFAULT_LIVES);
 }
 
 void game_init_carry(GameState *game, const AssetPack *assets, u8 hp, u8 lives)
@@ -202,18 +202,18 @@ static void move_horizontal(GameState *game)
     p->x += p->vx;
     x = px(p->x);
     head_y = px(p->y) + 2;
-    foot_y = px(p->y) + KOLO_PLAYER_H - 2;
+    foot_y = px(p->y) + PLAYER_H - 2;
     if (x < 0) {
         p->x = 0;
         p->vx = 0;
-    } else if (p->vx > 0 && (game_tile_solid(game, x + KOLO_PLAYER_W - 1, head_y) ||
-                             game_tile_solid(game, x + KOLO_PLAYER_W - 1, foot_y))) {
-        int tx = (x + KOLO_PLAYER_W - 1) / KOLO_TILE_SIZE;
-        p->x = fp(tiles_to_px(tx) - KOLO_PLAYER_W);
+    } else if (p->vx > 0 && (game_tile_solid(game, x + PLAYER_W - 1, head_y) ||
+                             game_tile_solid(game, x + PLAYER_W - 1, foot_y))) {
+        int tx = (x + PLAYER_W - 1) / TILE_SIZE;
+        p->x = fp(tiles_to_px(tx) - PLAYER_W);
         p->vx = 0;
     } else if (p->vx < 0 && (game_tile_solid(game, x, head_y) ||
                              game_tile_solid(game, x, foot_y))) {
-        int tx = x / KOLO_TILE_SIZE;
+        int tx = x / TILE_SIZE;
         p->x = fp(tiles_to_px(tx + 1));
         p->vx = 0;
     }
@@ -227,17 +227,17 @@ static void move_vertical(GameState *game)
     p->y += p->vy;
     y = px(p->y);
     left_x = px(p->x) + 2;
-    right_x = px(p->x) + KOLO_PLAYER_W - 3;
-    if (p->vy >= 0 && (game_tile_solid(game, left_x, y + KOLO_PLAYER_H) ||
-                       game_tile_solid(game, right_x, y + KOLO_PLAYER_H))) {
-        int ty = (y + KOLO_PLAYER_H) / KOLO_TILE_SIZE;
-        p->y = fp(tiles_to_px(ty) - KOLO_PLAYER_H);
+    right_x = px(p->x) + PLAYER_W - 3;
+    if (p->vy >= 0 && (game_tile_solid(game, left_x, y + PLAYER_H) ||
+                       game_tile_solid(game, right_x, y + PLAYER_H))) {
+        int ty = (y + PLAYER_H) / TILE_SIZE;
+        p->y = fp(tiles_to_px(ty) - PLAYER_H);
         p->vy = 0;
         p->on_ground = 1;
         p->coyote = COYOTE_FRAMES;
     } else if (p->vy < 0 && (game_tile_solid(game, left_x, y) ||
                              game_tile_solid(game, right_x, y))) {
-        int ty = y / KOLO_TILE_SIZE;
+        int ty = y / TILE_SIZE;
         p->y = fp(tiles_to_px(ty + 1));
         p->vy = 0;
     }
@@ -265,7 +265,7 @@ void game_damage(GameState *game, u8 type, int source_x)
     } else {
         p->hp = (u8)(p->hp - amount);
     }
-    p->invulnerable = KOLO_INVULNERABLE_FRAMES;
+    p->invulnerable = INVULNERABLE_FRAMES;
     p->vx = px(p->x) < source_x ? -KNOCKBACK_SPEED : KNOCKBACK_SPEED;
     p->vy = KNOCKBACK_LIFT;
     event_add(game, Event::HURT);
@@ -447,13 +447,13 @@ static void update_enemies(GameState *game, int old_bottom)
         ex = px(e->x);
         ey = px(e->y);
         if (e->pacified ||
-            !overlap(player_x, player_y, KOLO_PLAYER_W, KOLO_PLAYER_H,
-                     ex, ey, KOLO_PLAYER_W, KOLO_PLAYER_H)) continue;
+            !overlap(player_x, player_y, PLAYER_W, PLAYER_H,
+                     ex, ey, PLAYER_W, PLAYER_H)) continue;
         if (p->vy > 0 && old_bottom <= ey + STOMP_SLACK) {
-            p->y = fp(ey - KOLO_PLAYER_H);
-            p->vy = KOLO_ENEMY_BOUNCE_SPEED;
+            p->y = fp(ey - PLAYER_H);
+            p->vy = ENEMY_BOUNCE_SPEED;
             p->enemy_bounce = 1;
-            e->frozen = KOLO_FREEZE_FRAMES;
+            e->frozen = FREEZE_FRAMES;
             event_add(game, Event::BOUNCE);
         } else if (!e->frozen) {
             game_damage(game, e->type, ex);
@@ -471,20 +471,20 @@ int game_apply_pickup(GameState *game, u8 type)
         return 1;
     }
     if (type == PickupType::BLUE) {
-        game->blue_timer = KOLO_BLUE_FRAMES;
+        game->blue_timer = BLUE_FRAMES;
         event_add(game, Event::BLUE);
         return 1;
     }
     if (type == PickupType::SMALL_PIE) {
-        if (p->hp == KOLO_FULL_HP && p->lives >= KOLO_DEFAULT_LIVES) return 0;
-        p->hp = KOLO_FULL_HP;
-        if (p->lives < KOLO_DEFAULT_LIVES) ++p->lives;
+        if (p->hp == FULL_HP && p->lives >= DEFAULT_LIVES) return 0;
+        p->hp = FULL_HP;
+        if (p->lives < DEFAULT_LIVES) ++p->lives;
         event_add(game, Event::PIE);
         return 1;
     }
-    p->hp = KOLO_FULL_HP;
-    if (p->lives < KOLO_DEFAULT_LIVES) p->lives = KOLO_DEFAULT_LIVES;
-    else if (p->lives < KOLO_MAX_LIVES) ++p->lives;
+    p->hp = FULL_HP;
+    if (p->lives < DEFAULT_LIVES) p->lives = DEFAULT_LIVES;
+    else if (p->lives < MAX_LIVES) ++p->lives;
     event_add(game, Event::PIE);
     return 1;
 }
@@ -497,7 +497,7 @@ static void collect_pickups(GameState *game)
     for (i = 0; i < level->pickup_count; ++i) {
         const KoloPickup *pickup = &level->pickups[i];
         if (game->pickup_taken[i]) continue;
-        if (!overlap(x, y, KOLO_PLAYER_W, KOLO_PLAYER_H,
+        if (!overlap(x, y, PLAYER_W, PLAYER_H,
                      tiles_to_px(pickup->x) + 3, tiles_to_px(pickup->y) + 2,
                      PICKUP_HITBOX_W, PICKUP_HITBOX_H)) continue;
         if (game_apply_pickup(game, pickup->type)) game->pickup_taken[i] = 1;
@@ -525,7 +525,7 @@ static void update_collectibles(GameState *game)
     collect_pickups(game);
     claim_checkpoints(game);
     if (game_exit_ready(game) &&
-        iabs(px(game->player.x) - tiles_to_px(level->exit.x)) < KOLO_TILE_SIZE) {
+        iabs(px(game->player.x) - tiles_to_px(level->exit.x)) < TILE_SIZE) {
         game->won = 1;
         event_add(game, Event::WIN);
     }
@@ -615,7 +615,7 @@ static SurfaceGrip player_grip(const GameState *game)
 {
     const PlayerState *p = &game->player;
     u8 surface = p->on_ground
-        ? game_surface_at(game, px(p->x) + KOLO_PLAYER_W / 2, px(p->y) + KOLO_PLAYER_H + 1)
+        ? game_surface_at(game, px(p->x) + PLAYER_W / 2, px(p->y) + PLAYER_H + 1)
         : Surface::AIR;
     SurfaceGrip grip = grip_for(surface);
     if (game->blue_timer) {
@@ -644,7 +644,7 @@ static void apply_jump_input(GameState *game, const GameInput *input)
 {
     PlayerState *p = &game->player;
     if (p->jump_buffer && (p->on_ground || p->coyote)) {
-        p->vy = KOLO_JUMP_SPEED;
+        p->vy = JUMP_SPEED;
         p->enemy_bounce = p->on_ground = p->coyote = p->jump_buffer = 0;
         event_add(game, Event::JUMP);
     } else if (p->jump_buffer) {
@@ -656,16 +656,16 @@ static void apply_jump_input(GameState *game, const GameInput *input)
 static int fell_to_death(const GameState *game)
 {
     const PlayerState *p = &game->player;
-    int x = px(p->x), foot_y = px(p->y) + KOLO_PLAYER_H;
+    int x = px(p->x), foot_y = px(p->y) + PLAYER_H;
     return game_tile_hazard(game, x + 2, foot_y) ||
-           game_tile_hazard(game, x + KOLO_PLAYER_W - 3, foot_y) ||
-           px(p->y) > (int)game->assets->level.height * KOLO_TILE_SIZE;
+           game_tile_hazard(game, x + PLAYER_W - 3, foot_y) ||
+           px(p->y) > (int)game->assets->level.height * TILE_SIZE;
 }
 
 static void update_camera(GameState *game)
 {
-    s32 furthest = fp((int)game->assets->level.width * KOLO_TILE_SIZE - KOLO_SCREEN_W);
-    s32 target = game->player.x - fp(KOLO_CAMERA_OFFSET);
+    s32 furthest = fp((int)game->assets->level.width * TILE_SIZE - SCREEN_W);
+    s32 target = game->player.x - fp(CAMERA_OFFSET);
     if (target < 0) target = 0;
     if (target > furthest) target = furthest;
     game->camera_x += (target - game->camera_x) / CAMERA_EASE_DIVISOR;
@@ -688,7 +688,7 @@ void game_step(GameState *game, const GameInput *input)
     apply_run_input(p, input, &grip);
     apply_jump_input(game, input);
 
-    old_bottom = px(p->y) + KOLO_PLAYER_H;
+    old_bottom = px(p->y) + PLAYER_H;
     p->vy += GRAVITY;
     if (p->vy > MAX_FALL) p->vy = MAX_FALL;
     move_horizontal(game);

@@ -28,7 +28,7 @@
 #define FOREST_WOLF 6
 #define DEEP_BEAR 6
 
-static s32 to_fp(int value) { return (s32)value << KOLO_FP_SHIFT; }
+static s32 to_fp(int value) { return (s32)value << FP_SHIFT; }
 
 static void load(AssetPack *pack, const char *bank, const char *level)
 {
@@ -48,8 +48,8 @@ static void step(GameState *game, unsigned count)
 static void stand_at(GameState *game, int column)
 {
     game->player.on_ground = 1;
-    game->player.x = to_fp(column * KOLO_TILE_SIZE);
-    game->player.y = to_fp(GROUND_ROW * KOLO_TILE_SIZE - KOLO_PLAYER_H);
+    game->player.x = to_fp(column * TILE_SIZE);
+    game->player.y = to_fp(GROUND_ROW * TILE_SIZE - PLAYER_H);
     game->player.vx = 0;
 }
 
@@ -73,8 +73,8 @@ static void test_assets_and_levels(void)
 {
     AssetPack p;
     load(&p, "GARDEN", GARDEN_LEVEL);
-    assert(p.level.width == 96 && p.level.height == KOLO_LEVEL_HEIGHT);
-    assert(p.tile_count == Tile::COUNT && p.sprite_count == KOLO_MAX_SPRITES);
+    assert(p.level.width == 96 && p.level.height == LEVEL_HEIGHT);
+    assert(p.tile_count == Tile::COUNT && p.sprite_count == MAX_SPRITES);
     assert(p.level.required_red == 6 && p.level.pickup_count == 10);
     assert(p.level.animal_count == 8);
     assets_free(&p);
@@ -133,8 +133,8 @@ static void test_surface_physics(void)
 
     /* Airborne, the material underfoot must not matter. */
     g.player.on_ground = 0;
-    g.player.x = to_fp(GARDEN_SAND_COLUMN * KOLO_TILE_SIZE);
-    g.player.y = to_fp(7 * KOLO_TILE_SIZE);
+    g.player.x = to_fp(GARDEN_SAND_COLUMN * TILE_SIZE);
+    g.player.y = to_fp(7 * TILE_SIZE);
     g.player.vx = 0;
     game_step(&g, &right);
     assert(g.player.vx == AIR_ACCEL);
@@ -159,41 +159,41 @@ static void test_boost_and_pies(void)
     game_init(&g, &p);
 
     assert(game_apply_pickup(&g, PickupType::BLUE));
-    assert(g.blue_timer == KOLO_BLUE_FRAMES);
+    assert(g.blue_timer == BLUE_FRAMES);
     g.player.on_ground = 1;
     g.player.vx = 0;
     game_step(&g, &right);
     assert(g.player.vx == BOOSTED_GRASS_ACCEL);
-    assert(g.blue_timer == KOLO_BLUE_FRAMES - 1);
+    assert(g.blue_timer == BLUE_FRAMES - 1);
 
     /* A second blue berry refreshes the boost rather than stacking it. */
     step(&g, 10);
     game_apply_pickup(&g, PickupType::BLUE);
-    assert(g.blue_timer == KOLO_BLUE_FRAMES);
-    step(&g, KOLO_BLUE_FRAMES);
+    assert(g.blue_timer == BLUE_FRAMES);
+    step(&g, BLUE_FRAMES);
     assert(g.blue_timer == 0);
 
     /* A small pie is refused when it would do nothing, so it stays on the map. */
-    g.player.hp = KOLO_FULL_HP;
-    g.player.lives = KOLO_DEFAULT_LIVES;
+    g.player.hp = FULL_HP;
+    g.player.lives = DEFAULT_LIVES;
     assert(!game_apply_pickup(&g, PickupType::SMALL_PIE));
 
     g.player.hp = 50;
     assert(game_apply_pickup(&g, PickupType::SMALL_PIE));
-    assert(g.player.hp == KOLO_FULL_HP && g.player.lives == KOLO_DEFAULT_LIVES);
+    assert(g.player.hp == FULL_HP && g.player.lives == DEFAULT_LIVES);
 
     g.player.hp = 50;
     g.player.lives = 2;
     game_apply_pickup(&g, PickupType::SMALL_PIE);
-    assert(g.player.hp == KOLO_FULL_HP && g.player.lives == KOLO_DEFAULT_LIVES);
+    assert(g.player.hp == FULL_HP && g.player.lives == DEFAULT_LIVES);
 
     /* A big pie grants the bonus life only from a full three. */
-    g.player.lives = KOLO_DEFAULT_LIVES;
+    g.player.lives = DEFAULT_LIVES;
     game_apply_pickup(&g, PickupType::BIG_PIE);
-    assert(g.player.lives == KOLO_MAX_LIVES);
+    assert(g.player.lives == MAX_LIVES);
     g.player.lives = 1;
     game_apply_pickup(&g, PickupType::BIG_PIE);
-    assert(g.player.lives == KOLO_DEFAULT_LIVES);
+    assert(g.player.lives == DEFAULT_LIVES);
     assets_free(&p);
 }
 
@@ -207,17 +207,17 @@ static void test_damage_lives_checkpoint(void)
 
     game_damage(&g, AnimalType::RABBIT, 1000);
     assert(g.player.hp == 90);
-    assert(g.player.invulnerable == KOLO_INVULNERABLE_FRAMES);
+    assert(g.player.invulnerable == INVULNERABLE_FRAMES);
     assert(g.player.vx == -480 && g.player.vy == -300);
 
     /* Rabbit and fox contact can never take the last hit point. */
     g.player.invulnerable = 0;
     g.player.hp = 20;
     game_damage(&g, AnimalType::FOX, 0);
-    assert(g.player.hp == 1 && g.player.lives == KOLO_DEFAULT_LIVES);
+    assert(g.player.hp == 1 && g.player.lives == DEFAULT_LIVES);
 
     /* A wolf can, and respawning keeps pickups and berries but drops the boost. */
-    g.checkpoint_x = to_fp(40 * KOLO_TILE_SIZE);
+    g.checkpoint_x = to_fp(40 * TILE_SIZE);
     g.checkpoint_y = to_fp(130);
     g.pickup_taken[0] = 1;
     g.red_collected = 1;
@@ -225,7 +225,7 @@ static void test_damage_lives_checkpoint(void)
     g.player.invulnerable = 0;
     g.player.hp = 30;
     game_damage(&g, AnimalType::WOLF, 0);
-    assert(g.player.lives == 2 && g.player.hp == KOLO_FULL_HP);
+    assert(g.player.lives == 2 && g.player.hp == FULL_HP);
     assert(g.player.x == g.checkpoint_x);
     assert(g.red_collected == 1 && g.pickup_taken[0] && g.blue_timer == 0);
 
@@ -251,11 +251,11 @@ static void test_ai_freeze(void)
     assert(g.enemies[0].state == AiState::WAIT && g.enemies[0].timer == 0);
     step(&g, 1);
     assert(g.enemies[0].state == AiState::PATROL && g.enemies[0].vy == -600);
-    g.enemies[0].frozen = KOLO_FREEZE_FRAMES;
+    g.enemies[0].frozen = FREEZE_FRAMES;
     {
         s32 frozen_x = g.enemies[0].x;
         step(&g, 1);
-        assert(g.enemies[0].frozen == KOLO_FREEZE_FRAMES - 1);
+        assert(g.enemies[0].frozen == FREEZE_FRAMES - 1);
         assert(g.enemies[0].x == frozen_x);
     }
     assets_free(&p);
@@ -301,22 +301,22 @@ static void test_repeated_stomp_refresh(void)
     g.player.invulnerable = 255;
 
     g.player.x = rabbit->x;
-    g.player.y = rabbit->y - to_fp(KOLO_PLAYER_H);
+    g.player.y = rabbit->y - to_fp(PLAYER_H);
     g.player.vy = 400;
     g.player.on_ground = 0;
     game_step(&g, &idle);
-    assert((g.events & Event::BOUNCE) && rabbit->frozen == KOLO_FREEZE_FRAMES);
+    assert((g.events & Event::BOUNCE) && rabbit->frozen == FREEZE_FRAMES);
 
     g.player.x = 0;
     step(&g, 10);
-    assert(rabbit->frozen == KOLO_FREEZE_FRAMES - 10);
+    assert(rabbit->frozen == FREEZE_FRAMES - 10);
 
     g.player.x = rabbit->x;
-    g.player.y = rabbit->y - to_fp(KOLO_PLAYER_H);
+    g.player.y = rabbit->y - to_fp(PLAYER_H);
     g.player.vy = 400;
     g.player.on_ground = 0;
     game_step(&g, &idle);
-    assert(rabbit->frozen == KOLO_FREEZE_FRAMES);
+    assert(rabbit->frozen == FREEZE_FRAMES);
     assets_free(&p);
 }
 
@@ -397,7 +397,7 @@ static void test_optional_rewards(void)
     assert(game_try_talk(&g));
     assert(g.active_encounter == 1);
     assert(game_answer_dialogue(&g, 0) == 1);
-    assert(g.blue_timer == KOLO_BLUE_FRAMES && g.enemies[animal].pacified);
+    assert(g.blue_timer == BLUE_FRAMES && g.enemies[animal].pacified);
     assets_free(&p);
 
     load(&p, "FOREST", FOREST_LEVEL);
@@ -409,7 +409,7 @@ static void test_optional_rewards(void)
     assert(game_try_talk(&g));
     assert(g.active_encounter == 1);
     assert(game_answer_dialogue(&g, 2) == 1);
-    assert(g.player.hp == KOLO_FULL_HP && g.player.lives == KOLO_DEFAULT_LIVES);
+    assert(g.player.hp == FULL_HP && g.player.lives == DEFAULT_LIVES);
     assets_free(&p);
 }
 
@@ -431,13 +431,13 @@ static void test_sequential_carry(void)
     assert(g.blue_timer == 0 && g.red_collected == 0);
 
     g.player.hp = 41;
-    g.player.lives = KOLO_MAX_LIVES;
+    g.player.lives = MAX_LIVES;
     game_init_carry(&g, &deep, g.player.hp, g.player.lives);
-    assert(g.player.hp == 41 && g.player.lives == KOLO_MAX_LIVES);
+    assert(g.player.hp == 41 && g.player.lives == MAX_LIVES);
     assert(g.blue_timer == 0);
 
     game_init(&g, &deep);
-    assert(g.player.hp == KOLO_FULL_HP && g.player.lives == KOLO_DEFAULT_LIVES);
+    assert(g.player.hp == FULL_HP && g.player.lives == DEFAULT_LIVES);
     assets_free(&garden);
     assets_free(&forest);
     assets_free(&deep);

@@ -7,8 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define SCREEN_W KOLO_SCREEN_W
-#define SCREEN_H KOLO_SCREEN_H
 #define LOGICAL_W 328
 #define PITCH 82
 #define HUD_H 24
@@ -28,7 +26,6 @@
 #define RENDER_WIN 4
 #define COTTAGE_W 48
 #define COTTAGE_H 44
-#define TILE KOLO_TILE_SIZE
 #define HORIZON_Y 112
 #define CLOUD_TOP 27
 #define TREE_BAND_SPACING 48
@@ -488,8 +485,8 @@ static void draw_background(int camera, int pan, int preserve_hud,
 
 static void draw_cottage(const AssetPack *assets, int camera)
 {
-    int x = assets->level.home.x * TILE - camera;
-    int ground = assets->level.home.y * TILE + TILE;
+    int x = assets->level.home.x * TILE_SIZE - camera;
+    int ground = assets->level.home.y * TILE_SIZE + TILE_SIZE;
     int y = HUD_H + ground - COTTAGE_H;
     fill_rect(x, y, COTTAGE_W, COTTAGE_H, COLOR_WOOD);
     fill_rect(x + 4, y + 4, COTTAGE_W - 8, COTTAGE_H - 4, COLOR_TAN);
@@ -509,8 +506,8 @@ static void draw_level_trees(const AssetPack *assets, int camera)
     unsigned i;
     for (i = 0; i < assets->level.tree_count; ++i) {
         const KoloTree *tree = &assets->level.trees[i];
-        int x = tree->x * TILE - camera;
-        int base = HUD_H + tree->y * TILE + TILE;
+        int x = tree->x * TILE_SIZE - camera;
+        int base = HUD_H + tree->y * TILE_SIZE + TILE_SIZE;
         int height = tree->height * 12;
         unsigned char trunk = tree->type == TreeType::BIRCH ? COLOR_GREY_LIGHT : COLOR_BARK;
         unsigned char leaf = tree->type == TreeType::FIR ? COLOR_PINE : COLOR_FOLIAGE;
@@ -542,24 +539,24 @@ static void draw_entity_plane(const GameState *game, int camera, unsigned plane)
     for (i = 0; i < level->pickup_count; ++i)
         if (!game->pickup_taken[i])
             blit_sprite_plane(assets, pickup_sprite[level->pickups[i].type],
-                              level->pickups[i].x * TILE + 3 - camera,
-                              HUD_H + level->pickups[i].y * TILE + 2, plane);
+                              level->pickups[i].x * TILE_SIZE + 3 - camera,
+                              HUD_H + level->pickups[i].y * TILE_SIZE + 2, plane);
     for (i = 0; i < level->checkpoint_count; ++i)
         blit_sprite_plane(assets, SPRITE_MARKER,
-                          level->checkpoints[i].x * TILE - camera,
-                          HUD_H + level->checkpoints[i].y * TILE, plane);
-    blit_sprite_plane(assets, SPRITE_MARKER, level->exit.x * TILE - camera,
-                      HUD_H + level->exit.y * TILE, plane);
+                          level->checkpoints[i].x * TILE_SIZE - camera,
+                          HUD_H + level->checkpoints[i].y * TILE_SIZE, plane);
+    blit_sprite_plane(assets, SPRITE_MARKER, level->exit.x * TILE_SIZE - camera,
+                      HUD_H + level->exit.y * TILE_SIZE, plane);
     for (i = 0; i < level->animal_count; ++i) {
         const EnemyState *enemy = &game->enemies[i];
-        int x = (int)(enemy->x >> KOLO_FP_SHIFT) - camera;
-        int y = HUD_H + (int)(enemy->y >> KOLO_FP_SHIFT);
+        int x = (int)(enemy->x >> FP_SHIFT) - camera;
+        int y = HUD_H + (int)(enemy->y >> FP_SHIFT);
         blit_sprite_plane(assets, animal_sprite[enemy->type], x, y, plane);
         if (enemy->frozen) blit_sprite_plane(assets, SPRITE_FROZEN, x, y, plane);
     }
     blit_sprite_plane(assets, game->player.animation,
-                      (int)(game->player.x >> KOLO_FP_SHIFT) - camera,
-                      HUD_H + (int)(game->player.y >> KOLO_FP_SHIFT), plane);
+                      (int)(game->player.x >> FP_SHIFT) - camera,
+                      HUD_H + (int)(game->player.y >> FP_SHIFT), plane);
 }
 
 static void build_tile_cache(const AssetPack *assets)
@@ -575,7 +572,7 @@ static void build_tile_cache(const AssetPack *assets)
 
 static int tile_fully_onscreen(int x, int y)
 {
-    return x >= 0 && x <= LOGICAL_W - TILE && y >= 0 && y <= SCREEN_H - TILE;
+    return x >= 0 && x <= LOGICAL_W - TILE_SIZE && y >= 0 && y <= SCREEN_H - TILE_SIZE;
 }
 
 /* Fully visible tiles go through the latch path, which copies all four planes in
@@ -589,8 +586,8 @@ static void draw_tiles(const AssetPack *assets, int camera, int first, int last)
     for (ty = 0; ty < level->height; ++ty)
         for (tx = first; tx < last; ++tx) {
             unsigned tile = level->map[ty * level->width + tx];
-            int x = tx * TILE - camera;
-            int y = HUD_H + ty * TILE;
+            int x = tx * TILE_SIZE - camera;
+            int y = HUD_H + ty * TILE_SIZE;
             if (tile && tile < assets->tile_count && tile_fully_onscreen(x, y))
                 latch_tile_386(TILE_CACHE_BASE + tile * TILE_CACHE_BYTES,
                     draw_base + (unsigned)y * PITCH + (x >> 2));
@@ -601,8 +598,8 @@ static void draw_tiles(const AssetPack *assets, int camera, int first, int last)
         for (ty = 0; ty < level->height; ++ty)
             for (tx = first; tx < last; ++tx) {
                 unsigned tile = level->map[ty * level->width + tx];
-                int x = tx * TILE - camera;
-                int y = HUD_H + ty * TILE;
+                int x = tx * TILE_SIZE - camera;
+                int y = HUD_H + ty * TILE_SIZE;
                 if (tile && tile < assets->tile_count && !tile_fully_onscreen(x, y))
                     blit_tile_plane(assets->tiles + tile * 256, x, y, plane);
             }
@@ -612,11 +609,11 @@ static void draw_tiles(const AssetPack *assets, int camera, int first, int last)
 static void draw_world(const GameState *game, int preserve_hud)
 {
     const AssetPack *assets = game->assets;
-    int actual_camera = (int)(game->camera_x >> KOLO_FP_SHIFT);
+    int actual_camera = (int)(game->camera_x >> FP_SHIFT);
     int pan = preserve_hud ? (actual_camera & 3) : 0;
     int camera = actual_camera - pan;
-    int first = camera / TILE;
-    int last = (camera + SCREEN_W + 3) / TILE + 1;
+    int first = camera / TILE_SIZE;
+    int last = (camera + SCREEN_W + 3) / TILE_SIZE + 1;
     unsigned plane;
     u16 stage;
     draw_pan = (unsigned char)pan;
@@ -1051,7 +1048,7 @@ void video_render_ending(const GameState *game, u32 ticks)
     fill_rect(22 + draw_pan, 35, 276, 140, COLOR_WOOD);
     fill_rect(22 + draw_pan, 143, 276, 32, COLOR_BARK);
     draw_text(63 + draw_pan, 43, "KOLOBOK ROLLS HOME AGAIN", COLOR_WHITE, 1);
-    draw_cottage(game->assets, (int)game->assets->level.home.x * TILE - 190);
+    draw_cottage(game->assets, (int)game->assets->level.home.x * TILE_SIZE - 190);
     blit_sprite(game->assets, roll_frame(ticks), 285 - arrival * 2, 126);
     if (ticks > 55) {
         draw_grandparent(88 + draw_pan, 98, 1, (unsigned)(ticks / 8));
@@ -1104,17 +1101,17 @@ void video_render_editor(const GameState *game, unsigned cursor_x, unsigned curs
                          unsigned layer, unsigned tool, int dirty, int valid)
 {
     static const char *layers[3] = {"TILE", "OBJECT", "MARKER"};
-    int camera = (int)(game->camera_x >> KOLO_FP_SHIFT);
+    int camera = (int)(game->camera_x >> FP_SHIFT);
     int x, y;
     /* video_render_game picks the pan for this frame, so the cursor position can
      * only be placed once it has run. */
     video_render_game(game);
-    x = (int)cursor_x * TILE - camera + draw_pan;
-    y = HUD_H + (int)cursor_y * TILE;
-    fill_rect(x, y, TILE, 2, COLOR_LEMON);
-    fill_rect(x, y + TILE - 2, TILE, 2, COLOR_LEMON);
-    fill_rect(x, y, 2, TILE, COLOR_LEMON);
-    fill_rect(x + TILE - 2, y, 2, TILE, COLOR_LEMON);
+    x = (int)cursor_x * TILE_SIZE - camera + draw_pan;
+    y = HUD_H + (int)cursor_y * TILE_SIZE;
+    fill_rect(x, y, TILE_SIZE, 2, COLOR_LEMON);
+    fill_rect(x, y + TILE_SIZE - 2, TILE_SIZE, 2, COLOR_LEMON);
+    fill_rect(x, y, 2, TILE_SIZE, COLOR_LEMON);
+    fill_rect(x + TILE_SIZE - 2, y, 2, TILE_SIZE, COLOR_LEMON);
     fill_rect(0, 0, LOGICAL_W, HUD_H, COLOR_NIGHT);
     draw_text(3, 3, "X", COLOR_GREY_LIGHT, 1);
     draw_number(10, 3, cursor_x, COLOR_WHITE);
@@ -1249,14 +1246,14 @@ static void draw_animal_row(const LevelData *level, const KoloAnimalSpawn *anima
                            rewards[encounter ? encounter->reward : 0], selected);
         return;
     }
-    if (row == AnimalField::TREE && animal->tree_id == KOLO_NO_ID) {
+    if (row == AnimalField::TREE && animal->tree_id == NO_ID) {
         draw_property_text(ANIMAL_VALUE_X, y, "NONE", selected);
         return;
     }
     switch (row) {
     case AnimalField::FLAGS:        value = animal->flags; break;
     case AnimalField::DIALOGUE:
-        value = animal->dialogue_id == KOLO_NO_ID ? 0 : animal->dialogue_id;
+        value = animal->dialogue_id == NO_ID ? 0 : animal->dialogue_id;
         break;
     case AnimalField::ANSWER:
         value = encounter ? (unsigned)encounter->correct + 1 : 1;

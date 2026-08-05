@@ -169,12 +169,12 @@ static u32 level_body_bytes(const LevelData *level)
 static int level_counts_in_range(const LevelData *level)
 {
     return level->width >= KLV_MIN_WIDTH && level->width <= KLV_MAX_WIDTH &&
-           level->height == KOLO_LEVEL_HEIGHT &&
-           level->checkpoint_count <= KOLO_MAX_CHECKPOINTS &&
-           level->pickup_count <= KOLO_MAX_PICKUPS &&
-           level->animal_count <= KOLO_MAX_ENEMIES &&
-           level->tree_count <= KOLO_MAX_TREES &&
-           level->encounter_count <= KOLO_MAX_ENCOUNTERS;
+           level->height == LEVEL_HEIGHT &&
+           level->checkpoint_count <= MAX_CHECKPOINTS &&
+           level->pickup_count <= MAX_PICKUPS &&
+           level->animal_count <= MAX_ENEMIES &&
+           level->tree_count <= MAX_TREES &&
+           level->encounter_count <= MAX_ENCOUNTERS;
 }
 
 static int validate_markers(const LevelData *level, char *error, unsigned error_size)
@@ -262,7 +262,7 @@ static int validate_cross_references(const LevelData *level, char *error,
 {
     unsigned i, j, required = 0;
     for (i = 0; i < level->animal_count; ++i)
-        if (level->animals[i].tree_id != KOLO_NO_ID &&
+        if (level->animals[i].tree_id != NO_ID &&
             !tree_exists(level, level->animals[i].tree_id))
             return set_error(error, error_size, "animal refers to missing tree");
     for (i = 0; i < level->encounter_count; ++i) {
@@ -287,7 +287,7 @@ int level_validate(const LevelData *level, char *error, unsigned error_size)
 {
     u32 i;
     if (level->width < KLV_MIN_WIDTH || level->width > KLV_MAX_WIDTH ||
-        level->height != KOLO_LEVEL_HEIGHT)
+        level->height != LEVEL_HEIGHT)
         return set_error(error, error_size, "level must be 32..256 by 11 tiles");
     if (level->theme >= Theme::COUNT || level->map == NULL)
         return set_error(error, error_size, "invalid level theme or tile map");
@@ -651,9 +651,9 @@ static int parse_bank_header(AssetPack *pack, KoloConstFarPtr *cursor,
     p += 2;
     tile_h = far_read_u16_at(p);
     p += 2;
-    if (version != BANK_VERSION || tile_w != KOLO_TILE_SIZE || tile_h != KOLO_TILE_SIZE ||
+    if (version != BANK_VERSION || tile_w != TILE_SIZE || tile_h != TILE_SIZE ||
         pack->tile_count == 0 || pack->tile_count > BANK_MAX_TILES ||
-        pack->sprite_count == 0 || pack->sprite_count > KOLO_MAX_SPRITES)
+        pack->sprite_count == 0 || pack->sprite_count > MAX_SPRITES)
         return set_error(error, error_size, "unsupported resource bank metadata");
     if ((u32)(end - p) < BANK_PALETTE_SIZE +
                          (u32)pack->tile_count * (TILE_PIXELS + 2UL) + 4UL)
@@ -693,7 +693,7 @@ static int parse_bank(AssetPack *pack, char *error, unsigned error_size)
     span_end = p + span_size;
     for (i = 0; i < pack->sprite_count; ++i) {
         pack->sprite_spans[i] = (KoloFarPtr)p;
-        if (!check_span_rows(&p, span_end, KOLO_TILE_SIZE, error, error_size,
+        if (!check_span_rows(&p, span_end, TILE_SIZE, error, error_size,
                              "invalid sprite span")) return 0;
     }
     if (p != span_end)

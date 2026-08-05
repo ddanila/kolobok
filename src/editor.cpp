@@ -47,11 +47,11 @@ static int make_blank(LevelData *level)
     unsigned x;
     memset(level, 0, sizeof(*level));
     level->width = BLANK_WIDTH;
-    level->height = KOLO_LEVEL_HEIGHT;
+    level->height = LEVEL_HEIGHT;
     level->theme = Theme::GARDEN;
     level->required_red = 1;
     level->cloud_seed = 1;
-    level->map = (u8 *)calloc(BLANK_WIDTH * KOLO_LEVEL_HEIGHT, 1);
+    level->map = (u8 *)calloc(BLANK_WIDTH * LEVEL_HEIGHT, 1);
     if (!level->map) return 0;
     for (x = 0; x < BLANK_WIDTH; ++x) {
         level->map[BLANK_GROUND_ROW * BLANK_WIDTH + x] = Tile::GRASS_TOP;
@@ -76,7 +76,7 @@ static int make_blank(LevelData *level)
     level->animals[0].y = 8;
     level->animals[0].min_x = 65;
     level->animals[0].max_x = 75;
-    level->animals[0].tree_id = KOLO_NO_ID;
+    level->animals[0].tree_id = NO_ID;
     level->animals[0].dialogue_id = 1;
     level->animals[0].flags = 1;
 
@@ -158,14 +158,14 @@ static KoloEncounter *encounter_for(LevelData *level, u16 animal_id, int create)
     unsigned i;
     for (i = 0; i < level->encounter_count; ++i)
         if (level->encounters[i].animal_id == animal_id) return &level->encounters[i];
-    if (!create || level->encounter_count >= KOLO_MAX_ENCOUNTERS) return 0;
+    if (!create || level->encounter_count >= MAX_ENCOUNTERS) return 0;
     for (i = 0; i < level->animal_count; ++i)
         if (level->animals[i].id == animal_id) animal = &level->animals[i];
     encounter = &level->encounters[level->encounter_count++];
     memset(encounter, 0, sizeof(*encounter));
     encounter->id = next_encounter_id(level);
     encounter->animal_id = animal_id;
-    encounter->dialogue_id = (u8)(animal && animal->dialogue_id != KOLO_NO_ID
+    encounter->dialogue_id = (u8)(animal && animal->dialogue_id != NO_ID
                                   ? animal->dialogue_id : 1);
     encounter->retry_frames = DEFAULT_RETRY_FRAMES;
     return encounter;
@@ -217,7 +217,7 @@ static void adjust_tree_association(LevelData *level, KoloAnimalSpawn *animal, i
     int position = -1, next;
     unsigned i;
     if (!level->tree_count) {
-        animal->tree_id = KOLO_NO_ID;
+        animal->tree_id = NO_ID;
         return;
     }
     for (i = 0; i < level->tree_count; ++i)
@@ -225,7 +225,7 @@ static void adjust_tree_association(LevelData *level, KoloAnimalSpawn *animal, i
     next = position + delta;
     if (next < -1) next = (int)level->tree_count - 1;
     if (next >= (int)level->tree_count) next = -1;
-    animal->tree_id = next < 0 ? KOLO_NO_ID : level->trees[next].id;
+    animal->tree_id = next < 0 ? NO_ID : level->trees[next].id;
 }
 
 static int adjust_level_property(LevelData *level, unsigned field, int delta)
@@ -234,7 +234,7 @@ static int adjust_level_property(LevelData *level, unsigned field, int delta)
         level->theme = wrap_u8(level->theme, delta, Theme::COUNT);
     } else if (field == LevelField::REQUIRED_RED) {
         level->required_red = (u8)clamp_int((int)level->required_red + delta,
-                                            0, KOLO_MAX_PICKUPS);
+                                            0, MAX_PICKUPS);
     } else {
         long seed = (long)level->cloud_seed + delta;
         if (seed < 1) seed = MAX_CLOUD_SEED;
@@ -280,7 +280,7 @@ static int adjust_animal_property(LevelData *level, unsigned index,
         animal->flags = (u8)(animal->flags + delta);
         break;
     case AnimalField::DIALOGUE:
-        value = animal->dialogue_id == KOLO_NO_ID ? 1 : (int)animal->dialogue_id + delta;
+        value = animal->dialogue_id == NO_ID ? 1 : (int)animal->dialogue_id + delta;
         if (value < 1) value = MAX_DIALOGUE_ID;
         if (value > MAX_DIALOGUE_ID) value = 1;
         animal->dialogue_id = (u16)value;
@@ -338,7 +338,7 @@ static int adjust_property(LevelData *level, unsigned kind, unsigned index,
 static int place_pickup(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
     KoloPickup *pickup;
-    if (level->pickup_count >= KOLO_MAX_PICKUPS) return 0;
+    if (level->pickup_count >= MAX_PICKUPS) return 0;
     pickup = &level->pickups[level->pickup_count++];
     memset(pickup, 0, sizeof(*pickup));
     pickup->id = id;
@@ -351,7 +351,7 @@ static int place_pickup(LevelData *level, unsigned x, unsigned y, unsigned tool,
 static int place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
     KoloAnimalSpawn *animal;
-    if (level->animal_count >= KOLO_MAX_ENEMIES) return 0;
+    if (level->animal_count >= MAX_ENEMIES) return 0;
     animal = &level->animals[level->animal_count++];
     memset(animal, 0, sizeof(*animal));
     animal->id = id;
@@ -361,7 +361,7 @@ static int place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool,
     animal->min_x = (u16)(x > PATROL_HALF_WIDTH ? x - PATROL_HALF_WIDTH : 0);
     animal->max_x = (u16)(x + PATROL_HALF_WIDTH < level->width
                           ? x + PATROL_HALF_WIDTH : level->width - 1);
-    animal->tree_id = animal->dialogue_id = KOLO_NO_ID;
+    animal->tree_id = animal->dialogue_id = NO_ID;
     animal->climb_min = animal->climb_max = (u16)y;
     return 1;
 }
@@ -369,7 +369,7 @@ static int place_animal(LevelData *level, unsigned x, unsigned y, unsigned tool,
 static int place_tree(LevelData *level, unsigned x, unsigned y, unsigned tool, u16 id)
 {
     KoloTree *tree;
-    if (level->tree_count >= KOLO_MAX_TREES) return 0;
+    if (level->tree_count >= MAX_TREES) return 0;
     tree = &level->trees[level->tree_count++];
     memset(tree, 0, sizeof(*tree));
     tree->id = id;
@@ -430,7 +430,7 @@ static int erase_object(LevelData *level, unsigned x, unsigned y)
                     (level->tree_count - i - 1) * sizeof(KoloTree));
             --level->tree_count;
             for (j = 0; j < level->animal_count; ++j)
-                if (level->animals[j].tree_id == id) level->animals[j].tree_id = KOLO_NO_ID;
+                if (level->animals[j].tree_id == id) level->animals[j].tree_id = NO_ID;
             return 1;
         }
     return 0;
@@ -491,7 +491,7 @@ static void move_cursor(Editor *editor)
     if (key_pressed(KEY_RIGHT) && editor->cursor_x + 1 < editor->assets.level.width)
         ++editor->cursor_x;
     if (key_pressed(KEY_UP) && editor->cursor_y) --editor->cursor_y;
-    if (key_pressed(KEY_DOWN) && editor->cursor_y + 1 < KOLO_LEVEL_HEIGHT)
+    if (key_pressed(KEY_DOWN) && editor->cursor_y + 1 < LEVEL_HEIGHT)
         ++editor->cursor_y;
 }
 
@@ -572,8 +572,8 @@ static void render_editor(Editor *editor)
     /* The preview is rebuilt every frame because the editor mutates the level in
      * place, and GameState caches spawn positions taken from it. */
     game_init(&editor->preview, &editor->assets);
-    editor->preview.camera_x = (s32)(editor->cursor_x * KOLO_TILE_SIZE > KOLO_CAMERA_OFFSET
-        ? editor->cursor_x * KOLO_TILE_SIZE - KOLO_CAMERA_OFFSET : 0) << KOLO_FP_SHIFT;
+    editor->preview.camera_x = (s32)(editor->cursor_x * TILE_SIZE > CAMERA_OFFSET
+        ? editor->cursor_x * TILE_SIZE - CAMERA_OFFSET : 0) << FP_SHIFT;
     if (editor->prop.open)
         video_render_editor_properties(&editor->preview, editor->prop.kind,
                                       editor->prop.index, editor->prop.field);
@@ -617,7 +617,7 @@ static int editor_selftest(void)
     animal->y = 8;
     animal->min_x = 57;
     animal->max_x = 63;
-    animal->tree_id = animal->dialogue_id = KOLO_NO_ID;
+    animal->tree_id = animal->dialogue_id = NO_ID;
     animal->climb_min = animal->climb_max = 8;
 
     /* Escaping a property modal restores the level wholesale, so confirm a struct
