@@ -40,6 +40,31 @@ def pal_image(size: tuple[int, int]) -> Image.Image:
     return image
 
 
+def same_raster(path: Path, image: Image.Image) -> bool:
+    """Report whether the PNG on disk already holds exactly these pixels."""
+    if not path.exists():
+        return False
+    with Image.open(path) as existing:
+        return (existing.mode == image.mode and existing.size == image.size
+                and existing.getpalette() == image.getpalette()
+                and existing.tobytes() == image.tobytes())
+
+
+def save_png(image: Image.Image, path: Path) -> None:
+    """Write a review copy of a sheet, but only when its pixels actually change.
+
+    These PNGs are build products committed so art changes show up as a
+    reviewable diff. Pillow's zlib settings drift between releases, so simply
+    re-saving an unchanged sheet can emit different IDAT bytes and leave the
+    file dirty in git even though every pixel is identical. Skipping the write
+    keeps that noise out of the working tree, and the pinned compress_level
+    makes a genuine change encode the same way on every host.
+    """
+    if same_raster(path, image):
+        return
+    image.save(path, optimize=False, compress_level=9)
+
+
 def draw_tiles() -> Image.Image:
     sheet = pal_image((TILE_COUNT * TILE, TILE))
     d = ImageDraw.Draw(sheet)
@@ -462,16 +487,22 @@ def main() -> None:
     args = parser.parse_args()
     tiles, sprites = draw_tiles(), draw_sprites()
     validate_raster_encodings(tiles, sprites)
-    if args.check:
-        print("assets: PASS (v4 banks, palette, planar tiles, sprite spans)")
-        return
-    source_dir = ROOT / "assets" / "generated"
-    source_dir.mkdir(parents=True, exist_ok=True)
-    tiles.save(source_dir / "tiles.png", optimize=False)
-    sprites.save(source_dir / "sprites.png", optimize=False)
     palette = pal_image((256, 1))
     palette.putdata(range(256))
-    palette.save(source_dir / "palette.png", optimize=False)
+    source_dir = ROOT / "assets" / "generated"
+    sheets = ((source_dir / "tiles.png", tiles),
+              (source_dir / "sprites.png", sprites),
+              (source_dir / "palette.png", palette))
+    if args.check:
+        stale = [path.name for path, image in sheets if not same_raster(path, image)]
+        if stale:
+            raise SystemExit(f"assets: FAIL committed sheets are stale: {', '.join(stale)}\n"
+                             "run tools/assets.py to regenerate them and commit the result")
+        print("assets: PASS (v4 banks, palette, planar tiles, sprite spans, review sheets)")
+        return
+    source_dir.mkdir(parents=True, exist_ok=True)
+    for path, image in sheets:
+        save_png(image, path)
     write_pack(args.out, tiles, sprites)
     print(f"assets: wrote {args.out} ({args.out.stat().st_size} bytes)")
 

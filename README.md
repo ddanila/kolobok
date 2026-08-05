@@ -105,7 +105,10 @@ far sources directly instead of copying the bank into near data.
 `GARDEN.KLV`, `SFOREST.KLV`, and `DFOREST.KLV` are little-endian version-4 level
 files with CRC-32 protection, fixed 11-row maps, material tiles, markers,
 pickups, animal patrol/climb data, trees, and encounters. Reviewable sources are
-under `assets/`. Convert DOS editor output back to canonical JSON with:
+under `assets/`. The PNGs in `assets/generated/` are build products of
+`tools/assets.py`, committed so art changes are reviewable; they are rewritten
+only when their pixels change, and `make test` fails if they drift out of sync
+with the drawing code. Convert DOS editor output back to canonical JSON with:
 
 ```sh
 python3 tools/levels.py export LEVEL.KLV level.json
