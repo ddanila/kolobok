@@ -1,10 +1,10 @@
 DOSBox-X Mode X displayed-page CRC-32 reference set
-intro      C50D044F
-garden     CB251EBE
-forest     F0070D6B
-deep       3E0D9BB4
-dialogue   D784FF01
-frozen     2277FEA1
-gameover   18B77125
-home       1B42F0D8
-credits    90DB517A
+intro      D1BF345E
+garden     070ED7F3
+forest     CD3C83EF
+deep       03361530
+dialogue   EABF7185
+frozen     1F4C7025
+gameover   D49CB868
+home       26797E5C
+credits    ADE0DFFE

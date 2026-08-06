@@ -608,7 +608,8 @@ static void append_code_key(char *word, unsigned *length)
 }
 
 typedef enum UiState {
-    UI_TITLE, UI_CODE, UI_INTRO, UI_PLAY, UI_PAUSE, UI_ENDING, UI_CREDITS
+    UI_TITLE, UI_CODE, UI_INTRO, UI_PLAY, UI_LEVEL_CLEAR, UI_PAUSE,
+    UI_ENDING, UI_CREDITS
 } UiState;
 
 typedef struct App {
@@ -852,6 +853,26 @@ int main(int argc, char **argv)
             video_present();
             continue;
         }
+        if (ui == UI_LEVEL_CLEAR) {
+            if (key_pressed(Key::ENTER)) {
+                if (app.stage < Stage::DEEP) {
+                    u8 hp = app.game.player.hp, lives = app.game.player.lives;
+                    if (!enter_stage(&app, app.stage + 1, hp, lives)) break;
+                    music_play(stage_music[app.stage]);
+                    ui = UI_PLAY;
+                } else {
+                    app.game.blue_timer = 0;
+                    ui = UI_ENDING;
+                    ui_ticks = 0;
+                    music_play(Track::HOME);
+                }
+                keyboard_clear_edges();
+            } else {
+                video_render_win(&app.game);
+                video_present();
+            }
+            continue;
+        }
         if (ui == UI_ENDING) {
             if (key_pressed(Key::ENTER) && ui_ticks > 180) {
                 ui = UI_CREDITS;
@@ -906,16 +927,12 @@ int main(int argc, char **argv)
         game_step(&app.game, &input);
         play_events(app.game.events);
         if (app.game.won) {
-            if (app.stage < Stage::DEEP) {
-                u8 hp = app.game.player.hp, lives = app.game.player.lives;
-                if (!enter_stage(&app, app.stage + 1, hp, lives)) break;
-                music_play(stage_music[app.stage]);
-            } else {
-                app.game.blue_timer = 0;
-                ui = UI_ENDING;
-                ui_ticks = 0;
-                music_play(Track::HOME);
-            }
+            ui = UI_LEVEL_CLEAR;
+            ui_ticks = 0;
+            keyboard_clear_edges();
+            video_render_win(&app.game);
+            video_present();
+            continue;
         }
         video_render_game(&app.game);
         video_present();

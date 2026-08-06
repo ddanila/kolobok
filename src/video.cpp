@@ -522,6 +522,12 @@ static void draw_entity_plane(const GameState *game, int camera, unsigned plane)
     const AssetPack *assets = game->assets;
     const LevelData *level = &assets->level;
     unsigned i;
+    u16 guardian_id = NO_ID;
+    for (i = 0; i < level->encounter_count; ++i)
+        if (!game->encounter_solved[i] && level->encounters[i].required) {
+            guardian_id = level->encounters[i].animal_id;
+            break;
+        }
     for (i = 0; i < level->pickup_count; ++i)
         if (!game->pickup_taken[i])
             blit_sprite_plane(assets, pickup_sprite[level->pickups[i].type],
@@ -533,12 +539,18 @@ static void draw_entity_plane(const GameState *game, int camera, unsigned plane)
                           HUD_H + level->checkpoints[i].y * TILE_SIZE, plane);
     blit_sprite_plane(assets, SPRITE_MARKER, level->exit.x * TILE_SIZE - camera,
                       HUD_H + level->exit.y * TILE_SIZE, plane);
+    if (game->red_collected >= level->required_red && game->guardian_solved)
+        blit_sprite_plane(assets, SPRITE_SPARKLE,
+                          level->exit.x * TILE_SIZE - camera,
+                          HUD_H + level->exit.y * TILE_SIZE - 14, plane);
     for (i = 0; i < level->animal_count; ++i) {
         const EnemyState *enemy = &game->enemies[i];
         int x = (int)(enemy->x >> FP_SHIFT) - camera;
         int y = HUD_H + (int)(enemy->y >> FP_SHIFT);
         blit_sprite_plane(assets, animal_sprite[enemy->type], x, y, plane);
         if (enemy->frozen) blit_sprite_plane(assets, SPRITE_FROZEN, x, y, plane);
+        if (enemy->id == guardian_id && ((game->ticks >> 3) & 1) == 0)
+            blit_sprite_plane(assets, SPRITE_SPARKLE, x, y - 14, plane);
     }
     blit_sprite_plane(assets, game->player.animation,
                       (int)(game->player.x >> FP_SHIFT) - camera,
@@ -592,7 +604,7 @@ static void draw_tiles(const AssetPack *assets, int camera, int first, int last)
     }
 }
 
-static void draw_world(const GameState *game, int preserve_hud)
+static void draw_world(const GameState *game, int preserve_hud, int draw_entities)
 {
     const AssetPack *assets = game->assets;
     int actual_camera = (int)(game->camera_x >> FP_SHIFT);
@@ -615,10 +627,11 @@ static void draw_world(const GameState *game, int preserve_hud)
     draw_tiles(assets, camera, first, last);
     if (profile_enabled) profile.tile_ticks += profile_elapsed(stage);
     if (profile_enabled) stage = platform_profile_timer_read();
-    for (plane = 0; plane < 4; ++plane) {
-        set_map_mask((unsigned char)(1 << plane));
-        draw_entity_plane(game, camera, plane);
-    }
+    if (draw_entities)
+        for (plane = 0; plane < 4; ++plane) {
+            set_map_mask((unsigned char)(1 << plane));
+            draw_entity_plane(game, camera, plane);
+        }
     if (profile_enabled) profile.sprite_ticks += profile_elapsed(stage);
 }
 
@@ -631,7 +644,7 @@ static void draw_hud_static(const AssetPack *assets, int pan)
     draw_number(58 + pan, 8, assets->level.required_red, COLOR_WHITE);
     draw_text(92 + pan, 8, "HP", COLOR_GOLD, 1);
     draw_text(155 + pan, 8, "L", COLOR_GOLD, 1);
-    draw_text(194 + pan, 8, "M MUSIC S SFX", COLOR_GREY_LIGHT, 1);
+    draw_text(210 + pan, 8, "GOAL", COLOR_GREY_LIGHT, 1);
 }
 
 static void build_hud_cache(const AssetPack *assets)
@@ -662,6 +675,12 @@ static void draw_hud(const GameState *game)
         draw_text(181 + draw_pan, 8, "B", COLOR_CYAN, 1);
         draw_number(187 + draw_pan, 8, seconds_left, COLOR_CYAN);
     }
+    if (!game->guardian_solved)
+        draw_text(240 + draw_pan, 8, "TALK", COLOR_LEMON, 1);
+    else if (game->red_collected < game->assets->level.required_red)
+        draw_text(240 + draw_pan, 8, "BERRIES", COLOR_LEMON, 1);
+    else
+        draw_text(240 + draw_pan, 8, "EXIT", COLOR_WHITE, 1);
 }
 
 bool video_init(const AssetPack *assets)
@@ -765,7 +784,7 @@ void video_render_game(const GameState *game)
 {
     u16 stage;
     begin_hidden_frame();
-    draw_world(game, 1);
+    draw_world(game, 1, 1);
     if (profile_enabled) stage = platform_profile_timer_read();
     draw_hud(game);
     if (profile_enabled) {
@@ -783,17 +802,24 @@ static void begin_title_frame(const AssetPack *assets)
         draw_pan = 0;
         game_init(&preview, assets);
         preview.camera_x = 0;
-        draw_world(&preview, 0);
-        fill_rect(32, 26, 256, 92, COLOR_NIGHT);
-        fill_rect(36, 30, 248, 84, COLOR_PINE);
-        draw_text(70, 42, "KOLOBOK", COLOR_YELLOW, 3);
-        draw_text(67, 72, "FOREST BERRIES", COLOR_WHITE, 1);
-        draw_text(55, 88, "ARROWS OR A D TO ROLL", COLOR_GREY_LIGHT, 1);
-        draw_text(67, 99, "SPACE OR UP TO JUMP", COLOR_GREY_LIGHT, 1);
+        draw_world(&preview, 0, 1);
+        fill_rect(32, 8, 256, 92, COLOR_NIGHT);
+        fill_rect(36, 12, 248, 84, COLOR_PINE);
+        draw_text(70, 24, "KOLOBOK", COLOR_YELLOW, 3);
+        draw_text(67, 54, "FOREST BERRIES", COLOR_WHITE, 1);
+        draw_text(55, 70, "ARROWS OR A D TO ROLL", COLOR_GREY_LIGHT, 1);
+        draw_text(67, 81, "SPACE OR UP TO JUMP", COLOR_GREY_LIGHT, 1);
         title_cache_valid = true;
     }
     begin_hidden_frame();
     latch_copy(TITLE_PAGE, draw_base, PAGE_SIZE);
+}
+
+static void draw_menu_arrow(int x, int y, unsigned char color)
+{
+    fill_rect(x, y + 3, 8, 2, color);
+    fill_rect(x + 5, y + 1, 2, 6, color);
+    fill_rect(x + 7, y + 2, 2, 4, color);
 }
 
 void video_render_menu(const AssetPack *assets, unsigned selection)
@@ -805,7 +831,7 @@ void video_render_menu(const AssetPack *assets, unsigned selection)
     for (i = 0; i < 3; ++i) {
         int y = 122 + (int)i * 14;
         draw_text(104, y, items[i], i == selection ? COLOR_LEMON : COLOR_GREY_LIGHT, 1);
-        if (i == selection) draw_text(91, y, "1", COLOR_YELLOW, 1);
+        if (i == selection) draw_menu_arrow(91, y, COLOR_YELLOW);
     }
     queue_hidden_frame(0, RENDER_TITLE);
 }
@@ -840,12 +866,21 @@ void video_render_pause(const GameState *game)
 
 void video_render_win(const GameState *game)
 {
+    static const char *completed[Theme::COUNT] = {
+        "GARDEN COMPLETE", "SMALL FOREST COMPLETE", "DEEP FOREST COMPLETE"
+    };
+    const LevelData *level = &game->assets->level;
+    unsigned theme = level->theme < Theme::COUNT ? level->theme : Theme::GARDEN;
+    const char *prompt = theme == Theme::DEEP ? "ENTER FOR ENDING"
+                                              : "ENTER FOR NEXT LEVEL";
     if (render_state == RENDER_WIN) return;
     video_render_game(game);
     overlay_box(COLOR_WOOD);
-    draw_text(91 + draw_pan, 73, "BERRIES ARE HOME", COLOR_YELLOW, 1);
+    draw_text((LOGICAL_W - (int)strlen(completed[theme]) * 6) / 2 + draw_pan,
+              73, completed[theme], COLOR_YELLOW, 1);
     draw_text(103 + draw_pan, 92, "WELL DONE", COLOR_WHITE, 2);
-    draw_text(88 + draw_pan, 119, "ENTER TO PLAY AGAIN", COLOR_GREY_LIGHT, 1);
+    draw_text((LOGICAL_W - (int)strlen(prompt) * 6) / 2 + draw_pan,
+              119, prompt, COLOR_GREY_LIGHT, 1);
     render_state = RENDER_WIN;
 }
 
@@ -953,14 +988,15 @@ static void draw_intro_baking(const AssetPack *assets, u32 ticks, unsigned phase
 
 static void draw_intro_cooling(const AssetPack *assets, u32 ticks, unsigned phase)
 {
-    int walk = clamp_up_to((int)ticks, 90);
+    int walk = clamp_up_to((int)(ticks * 6 / 5), 139);
     draw_text(73, 36, "COOLING ON THE WINDOW", COLOR_WHITE, 1);
     fill_rect(56, 105, 204, 9, COLOR_WOOD);
     fill_rect(194, 55, 58, 50, COLOR_NIGHT);
     fill_rect(199, 60, 48, 40, COLOR_CYAN);
     draw_grandparent(52 + walk, 72, 1, phase);
-    blit_sprite(assets, SPRITE_ROLL_FIRST, 72 + walk, 80);
-    if (ticks > 92) {
+    if (walk < 139) {
+        blit_sprite(assets, SPRITE_ROLL_FIRST, 72 + walk, 80);
+    } else {
         blit_sprite(assets, SPRITE_ROLL_FIRST, 211, 88);
         fill_rect(216, 76 - (int)(ticks % 12), 2, 6, COLOR_CREAM);
     }
@@ -981,10 +1017,14 @@ static void draw_intro_waking(const AssetPack *assets, u32 ticks, unsigned phase
 
 static void draw_intro_leaving(const AssetPack *assets, u32 ticks)
 {
-    int fall = clamp_up_to((int)(ticks * 3 / 2), 92);
+    int step = clamp_up_to((int)ticks, 42);
+    int fall = clamp_up_to(step * step / 80, 22);
+    int cottage_x = assets->level.home.x * TILE_SIZE;
+    int ground = assets->level.home.y * TILE_SIZE + TILE_SIZE;
+    int cottage_y = HUD_H + ground - COTTAGE_H;
     draw_text(78, 34, "OUT INTO THE GARDEN", COLOR_WHITE, 1);
-    draw_cottage(assets, 0);
-    blit_sprite(assets, roll_frame(ticks), 145 + (int)ticks / 3, 55 + fall);
+    blit_sprite(assets, roll_frame(ticks), cottage_x + 2 + step / 3,
+                cottage_y + 8 + fall);
 }
 
 void video_render_intro(const AssetPack *assets, unsigned scene, u32 ticks)
@@ -992,9 +1032,10 @@ void video_render_intro(const AssetPack *assets, unsigned scene, u32 ticks)
     GameState preview;
     unsigned phase = (unsigned)(ticks / 8);
     game_init(&preview, assets);
+    preview.player.x = fp(-PLAYER_W);
     preview.camera_x = 0;
     begin_hidden_frame();
-    draw_world(&preview, 0);
+    draw_world(&preview, 0, 0);
     if (scene == 3) {
         draw_intro_leaving(assets, ticks);
     } else {
