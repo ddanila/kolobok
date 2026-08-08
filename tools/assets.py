@@ -20,6 +20,11 @@ TRANSPARENT = 0
 PLAYER_FRAMES = 4
 SPRITE_COUNT = 15
 TILE_COUNT = 11
+SOURCE_SHEETS = (
+    ("tiles.png", (TILE_COUNT * TILE, TILE)),
+    ("sprites.png", (SPRITE_COUNT * TILE, TILE)),
+    ("grandparents.png", (4 * 28, 40)),
+)
 
 
 def load_manifest() -> dict:
@@ -62,6 +67,76 @@ def full_palette(manifest: dict) -> list[tuple[int, int, int]]:
 
 def palette_bytes(colors: list[tuple[int, int, int]]) -> list[int]:
     return [component for rgb in colors for component in rgb]
+
+
+def replace_manifest_palette(text: str, colors: list[tuple[int, int, int]]) -> str:
+    """Replace only the palette array, keeping the hand-formatted metadata intact."""
+    key = text.index('"palette"')
+    start = text.index("[", key)
+    depth = 0
+    end = start
+    for end in range(start, len(text)):
+        if text[end] == "[":
+            depth += 1
+        elif text[end] == "]":
+            depth -= 1
+            if depth == 0:
+                break
+    else:
+        raise ValueError("unterminated palette in art manifest")
+    replacement = "[\n" + ",\n".join(
+        "    " + json.dumps(list(rgb)) for rgb in colors
+    ) + "\n  ]"
+    return text[:start] + replacement + text[end + 1:]
+
+
+def normalize_sources() -> None:
+    """Import true-color editor output into the shared indexed art palette."""
+    manifest_path = ART_DIR / "manifest.json"
+    manifest = load_manifest()
+    colors = [tuple(rgb) for rgb in manifest["palette"]]
+    source_pixels = []
+    new_colors = set()
+
+    for name, expected_size in SOURCE_SHEETS:
+        path = ART_DIR / name
+        image = Image.open(path).convert("RGBA")
+        image.load()
+        if image.size != expected_size:
+            raise ValueError(f"{path} must be {expected_size[0]}x{expected_size[1]}")
+        raw_pixels = image.tobytes()
+        pixels = [tuple(raw_pixels[offset:offset + 4])
+                  for offset in range(0, len(raw_pixels), 4)]
+        partial_alpha = sorted({alpha for _, _, _, alpha in pixels if alpha not in (0, 255)})
+        if partial_alpha:
+            raise ValueError(f"{path} uses partial alpha values: {partial_alpha}")
+        source_pixels.append((path, image.size, pixels))
+        new_colors.update(
+            tuple(rgb) for *rgb, alpha in pixels
+            if alpha == 255 and tuple(rgb) not in colors
+        )
+
+    appended = sorted(new_colors)
+    colors.extend(appended)
+    if len(colors) > 256:
+        raise ValueError(
+            f"art sources require {len(colors)} colors; indexed VGA art supports at most 256"
+        )
+
+    color_indices = {rgb: index for index, rgb in enumerate(colors)}
+    full_colors = colors + [(0, 0, 0)] * (256 - len(colors))
+    for path, size, pixels in source_pixels:
+        normalized = Image.new("P", size, TRANSPARENT)
+        normalized.putpalette(palette_bytes(full_colors))
+        normalized.putdata([
+            TRANSPARENT if alpha == 0 else color_indices[tuple(rgb)]
+            for *rgb, alpha in pixels
+        ])
+        save_preview(path, normalized)
+
+    if appended:
+        manifest_path.write_text(replace_manifest_palette(manifest_path.read_text(), colors))
+    print(f"art import: normalized {len(source_pixels)} sheets; appended {len(appended)} colors")
 
 
 def load_indexed_sheet(path: Path, size: tuple[int, int], manifest: dict,
@@ -311,8 +386,12 @@ def save_preview(path: Path, image: Image.Image) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--normalize-sources", action="store_true")
     parser.add_argument("--out", type=Path, default=ROOT / "build" / "KOLOBOK.DAT")
     args = parser.parse_args()
+    if args.normalize_sources:
+        normalize_sources()
+        return
     manifest, colors, tiles, sprites = load_art_sources()
     validate_raster_encodings(tiles, sprites)
     palette = Image.new("P", (256, 1), TRANSPARENT)

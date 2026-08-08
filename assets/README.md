@@ -15,12 +15,15 @@ Everything intended for hand editing lives below this directory. Files under
 - `levels/*.json` are the reviewable level sources compiled to KLV4.
 - `generated/*.png` are normalized build previews for quick inspection.
 
-All PNG sources use palette mode (`P`) and must contain the exact 256-entry
-palette described by `manifest.json`: the 32 named colors followed by black
-reserved entries. Keep palette indices stable; the DOS renderer and level tile
-IDs refer to them directly. `make assets` and `make host-test` reject RGB/RGBA
-files, altered palettes, wrong sheet dimensions, unexpected indices, duplicate
-names, or non-contiguous IDs.
+## Editing art
+
+- Edit PNGs in `art/`, never the previews in `generated/`.
+- Use indexed mode with `generated/palette.png`; index 0 is transparent.
+- Keep the sheet size and frame order. Do not resize, smooth, or use partial alpha.
+- If the editor saves RGB/RGBA or adds colors, run `make art-import`.
+- Edit levels in `levels/*.json`; they do not need the art import step.
+
+The normal build stays strict and rejects invalid sheets or palettes.
 
 The grandparents used to be rectangles hard-coded in `src/video.cpp`. They now
 come from `art/grandparents.png`; the build converts its pixels into coalesced
@@ -37,6 +40,7 @@ designer does not need to hunt for missing files.
 After editing art or level JSON, run:
 
 ```sh
+make art-import  # after RGB/RGBA export or adding colors
 make assets
 make host-test
 make screenshot

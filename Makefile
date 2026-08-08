@@ -1,4 +1,4 @@
-.PHONY: all assets levels toolchain dos dos-debug trace-playtest host-test perf-test playtest test run screenshot dist clean
+.PHONY: all art-import assets levels toolchain dos dos-debug trace-playtest host-test perf-test playtest test run screenshot dist clean
 
 PYTHON ?= python3
 
@@ -11,6 +11,9 @@ HOST_CXX ?= g++
 HOST_CXXFLAGS ?= -std=c++11 -Wall -Wextra -Werror
 
 all: dos
+
+art-import:
+	$(PYTHON) tools/assets.py --normalize-sources
 
 assets: build/KOLOBOK.DAT build/generated/grandparents.inc levels
 
