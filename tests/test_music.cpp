@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 #define TRACK_COUNT 4
-#define TICKS_PER_TRACK 192
+#define TICKS_PER_TRACK 704
 #define ALL_SIX_VOICES 0x3f
 #define BLOCK_KEYON_FIRST 0xb0
 #define BLOCK_KEYON_LAST 0xb5
@@ -44,8 +44,8 @@ static void reset(MockOPL *mock)
     mock->voices = 0;
 }
 
-/* Plays one track for long enough to loop its 16 steps several times and returns
- * the register-stream fingerprint. */
+/* Plays every arrangement for long enough to complete its full folk-song form
+ * and returns the register-stream fingerprint. */
 static u32 trace_track(MockOPL *mock, unsigned track)
 {
     unsigned i;

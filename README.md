@@ -136,4 +136,4 @@ aims at. It is a target, not a capture: the shipped 320×200 renderer and its
 ## License
 
 Code, original graphics, and the original arrangement are MIT licensed. See
-[LICENSE](LICENSE). The underlying 1869 folk-song melody is public domain.
+[LICENSE](LICENSE). The underlying 1861 “Korobeiniki” melody is public domain.

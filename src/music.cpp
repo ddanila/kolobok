@@ -4,10 +4,10 @@
 #include <conio.h>
 #endif
 
-#define REST 255
-#define STEPS 16
+#define MELODY_STEPS 54
 #define VOICES 6
 #define SCORE_COUNT 4
+#define CHORD_COUNT 3
 
 /* OPL2 register file. Operators are addressed by an offset table rather than
  * linearly, because channel n's two operators are not adjacent. */
@@ -34,51 +34,53 @@
 #define OPL_ADDRESS_DELAY_READS 6
 #define OPL_DATA_DELAY_READS 35
 
-typedef struct MusicStep { u8 ticks; u8 note[VOICES]; } MusicStep;
+typedef struct MelodyStep { u8 eighths, note, chord; } MelodyStep;
+typedef struct Harmony { u8 note[VOICES - 1]; } Harmony;
 typedef struct OplInstrument {
     u8 mod_char, car_char, mod_level, car_level, attack, decay, wave, feedback;
 } OplInstrument;
 
-/* The lead contours derive from public-domain song 45 in Tchaikovsky's 1869
- * collection. Counterpoint, chords, bass, rhythm, form and timbres are original. */
-static const MusicStep garden_score[STEPS] = {
- {4,{31,35,24,28,31,12}},{4,{33,36,24,28,31,12}},{4,{35,38,26,29,33,14}},{8,{36,40,24,28,31,12}},
- {4,{35,38,23,26,31,11}},{4,{33,36,21,24,28,9}},{8,{31,35,19,23,26,7}},{4,{28,31,21,24,28,9}},
- {4,{31,35,24,28,31,12}},{8,{33,36,26,29,33,14}},{8,{31,35,24,28,31,12}},{4,{28,31,21,24,28,9}},
- {4,{26,29,19,23,26,7}},{8,{24,28,17,21,24,5}},{4,{28,31,21,24,28,9}},{8,{24,28,17,21,24,0}}
+struct Chord { enum Enum { AM, E7, DM }; };
+
+/* Korobeiniki is a public-domain Russian folk song dating to 1861. This is a
+ * fresh transcription of its two strains: the second strain repeats before the
+ * whole form loops. Harmony, voicings, rhythm and OPL timbres are original. */
+static const MelodyStep melody[MELODY_STEPS] = {
+    {3,28,Chord::E7},{1,32,Chord::E7},{2,35,Chord::E7},{1,32,Chord::E7},{1,28,Chord::E7},
+    {3,33,Chord::AM},{1,35,Chord::AM},{2,36,Chord::AM},{1,35,Chord::AM},{1,33,Chord::AM},
+    {3,35,Chord::E7},{1,36,Chord::E7},{2,38,Chord::E7},{1,40,Chord::E7},{1,38,Chord::E7},
+    {2,36,Chord::AM},{2,33,Chord::AM},{4,33,Chord::AM},
+
+    {3,38,Chord::DM},{1,41,Chord::DM},{2,45,Chord::DM},{1,43,Chord::DM},{1,41,Chord::DM},
+    {3,40,Chord::AM},{1,36,Chord::AM},{2,40,Chord::AM},{1,38,Chord::AM},{1,36,Chord::AM},
+    {3,35,Chord::E7},{1,36,Chord::E7},{2,38,Chord::E7},{1,40,Chord::E7},{1,38,Chord::E7},
+    {2,36,Chord::AM},{2,33,Chord::AM},{4,33,Chord::AM},
+
+    {3,38,Chord::DM},{1,41,Chord::DM},{2,45,Chord::DM},{1,43,Chord::DM},{1,41,Chord::DM},
+    {3,40,Chord::AM},{1,36,Chord::AM},{2,40,Chord::AM},{1,38,Chord::AM},{1,36,Chord::AM},
+    {3,35,Chord::E7},{1,36,Chord::E7},{2,38,Chord::E7},{1,40,Chord::E7},{1,38,Chord::E7},
+    {2,36,Chord::AM},{2,33,Chord::AM},{4,33,Chord::AM}
+};
+static_assert(sizeof(melody) / sizeof(melody[0]) == MELODY_STEPS,
+              "Korobeiniki form length");
+
+/* Five accompaniment voices for each track and harmony. Existing instrument
+ * banks make the same folk tune feel pastoral, spare, dark or celebratory. */
+static const Harmony harmonies[SCORE_COUNT][CHORD_COUNT] = {
+    {{{28,21,24,28,9}},{{26,20,23,28,4}},{{29,21,26,29,2}}},
+    {{{16,9,16,24,9}},{{14,4,11,20,4}},{{17,5,14,21,2}}},
+    {{{12,9,12,16,9}},{{11,4,8,14,4}},{{9,2,5,14,2}}},
+    {{{40,33,36,40,21}},{{38,32,35,40,16}},{{41,33,38,41,14}}}
 };
 
-static const MusicStep forest_score[STEPS] = {
- {6,{31,REST,24,28,REST,12}},{3,{REST,35,24,28,31,12}},{6,{33,REST,26,29,REST,14}},{3,{REST,36,26,29,33,14}},
- {6,{35,REST,23,26,31,11}},{3,{REST,38,23,26,REST,11}},{9,{36,33,21,24,28,9}},{6,{33,31,19,23,26,7}},
- {6,{31,REST,24,28,31,12}},{3,{REST,35,24,28,REST,12}},{6,{28,31,21,24,28,9}},{6,{31,33,23,26,31,11}},
- {6,{29,33,22,26,29,10}},{6,{26,29,19,23,26,7}},{6,{28,31,21,24,28,9}},{9,{24,28,17,21,24,0}}
-};
-
-static const MusicStep deep_score[STEPS] = {
- {6,{19,22,12,15,19,0}},{6,{21,24,14,17,21,2}},{6,{22,26,10,14,17,REST}},{10,{24,27,12,15,19,0}},
- {6,{22,26,11,14,19,REST}},{6,{21,24,9,12,16,REST}},{10,{19,22,7,10,14,REST}},{6,{16,19,9,12,16,REST}},
- {6,{19,22,12,15,19,0}},{8,{21,24,14,17,21,2}},{8,{19,22,11,14,19,REST}},{6,{16,19,9,12,16,REST}},
- {6,{14,17,7,10,14,REST}},{10,{12,15,5,8,12,REST}},{6,{11,14,4,7,11,REST}},{12,{12,19,5,8,12,0}}
-};
-
-static const MusicStep home_score[STEPS] = {
- {3,{31,43,24,28,31,12}},{3,{33,45,26,29,33,14}},{3,{35,47,28,31,35,16}},{6,{36,48,29,33,36,17}},
- {3,{38,47,31,35,38,19}},{3,{36,45,29,33,36,17}},{6,{35,43,28,31,35,16}},{3,{31,40,24,28,31,12}},
- {3,{33,45,26,29,33,14}},{6,{35,47,28,31,35,16}},{6,{36,48,29,33,36,17}},{3,{35,47,28,31,35,16}},
- {3,{33,45,26,29,33,14}},{6,{31,43,24,28,31,12}},{3,{35,47,28,31,35,16}},{9,{36,48,24,28,36,12}}
-};
+static const u8 ticks_per_eighth[SCORE_COUNT] = {5, 6, 7, 4};
+static const s8 lead_transpose[SCORE_COUNT] = {0, 0, -12, 0};
 
 static const OplInstrument instruments[SCORE_COUNT][VOICES] = {
  {{0x21,0x01,0x16,0x03,0xf3,0x45,0,2},{0x21,0x01,0x20,0x08,0xe3,0x45,0,2},{0x01,0x01,0x28,0x0c,0xd4,0x56,0,4},{0x01,0x01,0x2c,0x10,0xd4,0x56,0,4},{0x01,0x01,0x30,0x12,0xc4,0x67,0,4},{0x21,0x01,0x24,0x08,0xf2,0x45,0,6}},
  {{0x61,0x21,0x1c,0x06,0xd4,0x56,1,2},{0x21,0x21,0x24,0x0c,0xc4,0x67,1,2},{0x01,0x01,0x2c,0x10,0xb5,0x78,0,4},{0x01,0x01,0x30,0x14,0xb5,0x78,0,4},{0x21,0x01,0x34,0x18,0xa5,0x89,0,4},{0x21,0x01,0x28,0x0a,0xd3,0x56,0,6}},
  {{0x21,0x01,0x12,0x04,0xf2,0x67,2,6},{0x21,0x01,0x1c,0x0a,0xe2,0x67,2,6},{0x01,0x01,0x24,0x0c,0xc3,0x89,0,4},{0x01,0x01,0x28,0x10,0xc3,0x89,0,4},{0x01,0x01,0x2c,0x14,0xb3,0x9a,0,4},{0x21,0x01,0x18,0x04,0xf1,0x67,0,7}},
  {{0x61,0x21,0x10,0x02,0xf4,0x34,1,2},{0x61,0x21,0x18,0x05,0xf4,0x34,1,2},{0x21,0x01,0x20,0x08,0xe4,0x45,0,4},{0x21,0x01,0x24,0x0a,0xe4,0x45,0,4},{0x21,0x01,0x28,0x0c,0xd4,0x56,0,4},{0x21,0x01,0x18,0x04,0xf3,0x34,0,6}}
-};
-
-/* Indexed by MUSIC_* track, so a track maps straight to its score and timbres. */
-static const MusicStep *const scores[SCORE_COUNT] = {
-    garden_score, forest_score, deep_score, home_score
 };
 
 static const u8 operator_offsets[VOICES] = {0, 1, 2, 8, 9, 10};
@@ -241,7 +243,8 @@ void music_play(unsigned track)
 
 void music_tick(void)
 {
-    const MusicStep *step;
+    const MelodyStep *step;
+    const Harmony *harmony;
     unsigned voice;
     if (!enabled) return;
     ++debug_ticks;
@@ -249,12 +252,14 @@ void music_tick(void)
         --step_ticks;
         return;
     }
-    step = &scores[score_id][step_index];
+    step = &melody[step_index];
+    harmony = &harmonies[score_id][step->chord];
     silence_voices();
-    for (voice = 0; voice < VOICES; ++voice)
-        if (step->note[voice] != REST) note_on(voice, step->note[voice]);
-    step_ticks = (u8)(step->ticks - 1);
-    step_index = (u8)((step_index + 1) % STEPS);
+    note_on(0, (unsigned)((int)step->note + lead_transpose[score_id]));
+    for (voice = 1; voice < VOICES; ++voice)
+        note_on(voice, harmony->note[voice - 1]);
+    step_ticks = (u8)(step->eighths * ticks_per_eighth[score_id] - 1);
+    step_index = (u8)((step_index + 1) % MELODY_STEPS);
 }
 
 u32 music_debug_ticks(void) { return debug_ticks; }

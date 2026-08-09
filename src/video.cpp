@@ -1078,7 +1078,7 @@ void video_render_credits(const GameState *game, u32 ticks)
     static const char *lines[] = {
         "KOLOBOK EXPANDED ADVENTURE", "DESIGN AND PROGRAMMING", "D DANILA",
         "ORIGINAL OPL ARRANGEMENTS", "PUBLIC DOMAIN FOLK MELODY",
-        "TCHAIKOVSKY COLLECTION 1869", "BUILT WITH OPEN WATCOM",
+        "KOROBEINIKI RUSSIA 1861", "BUILT WITH OPEN WATCOM",
         "TESTED WITH DOSBOX X", "THANK YOU FOR PLAYING"
     };
     const unsigned count = sizeof(lines) / sizeof(lines[0]);

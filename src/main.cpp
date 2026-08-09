@@ -790,12 +790,15 @@ int main(int argc, char **argv)
         speaker_tick();
         music_tick();
         ++ui_ticks;
-        if (key_pressed(Key::S)) {
+        /* Text entry owns printable keys. In particular, checking the global M
+         * hotkey first would consume its edge before append_code_key saw it. */
+        if (ui != UI_CODE && key_pressed(Key::S)) {
             sound_on = !sound_on;
             speaker_shutdown();
             speaker_init(sound_on);
         }
-        if (key_pressed(Key::M)) music_set_enabled(!music_is_enabled());
+        if (ui != UI_CODE && key_pressed(Key::M))
+            music_set_enabled(!music_is_enabled());
 
         if (ui == UI_TITLE) {
             running = run_title(&app, &title, &ui, &intro_scene, &ui_ticks);
