@@ -2,9 +2,10 @@ KOLOBOK: EXPANDED ADVENTURE (MS-DOS)
 ====================================
 Version 0.0.3
 
-Collect the red berries and solve each guardian's three-choice puzzle through
-the Garden, Small Forest, and Deep Forest. Blue berries boost speed for ten
-seconds. Pies restore HP and lives. Reach home with Kolobok!
+Each level begins with a mission card. Collect every required red berry, find
+the sparkling guardian, press Enter nearby to solve its three-choice puzzle,
+then reach the sparkling exit. The HUD shows each requirement. Blue berries
+boost speed for ten seconds. Pies restore HP and lives. Reach home with Kolobok!
 
 CONTROLS
   Left/Right or A/D   Roll
@@ -19,6 +20,7 @@ CODEWORDS
   REPKA     Garden (skip intro)
   TEREMOK   Small Forest
   MOROZKO   Deep Forest
+  CREDITS   Credit crawl
 
 FILES
   KOLOBOK.EXE, KOLOBOK.DAT, GARDEN.KLV, SFOREST.KLV and DFOREST.KLV

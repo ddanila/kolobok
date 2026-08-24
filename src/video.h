@@ -19,6 +19,7 @@ void video_vsync_enable(bool enabled);
 void video_render_menu(const AssetPack *assets, unsigned selection);
 void video_render_codeword(const AssetPack *assets, const char *word, bool invalid);
 void video_render_game(const GameState *game);
+void video_render_objective(const GameState *game);
 void video_render_pause(const GameState *game);
 void video_render_win(const GameState *game);
 void video_render_dialogue(const GameState *game, unsigned selection);

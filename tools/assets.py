@@ -291,7 +291,10 @@ def themed_art(tiles: Image.Image, sprites: Image.Image, bank_name: str) -> tupl
         sprite_copy = sprite_copy.point(lambda color: 26 if color == 20 else color)
     elif bank_name == "DEEP":
         tile_copy = tile_copy.point(lambda color: 5 if color in (6, 7) else color)
-        sprite_copy = sprite_copy.point(lambda color: 23 if color == 31 else (24 if color == 22 else color))
+        # Keep the wolf's main gray (22): remapping it to soot (24) made its
+        # body identical to the Deep Forest horizon. Only the lemon accent is
+        # subdued for the night bank.
+        sprite_copy = sprite_copy.point(lambda color: 23 if color == 31 else color)
     return tile_copy, sprite_copy
 
 

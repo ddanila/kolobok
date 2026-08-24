@@ -105,11 +105,17 @@ static bool selftest_gameplay(const AssetPack *assets, GameState *game)
     return game->player.hp == FULL_HP && game->player.lives == DEFAULT_LIVES;
 }
 
+static bool credits_codeword(const char *word)
+{
+    return stricmp(word, "CREDITS") == 0;
+}
+
 static bool selftest_codewords(void)
 {
     return campaign_codeword_stage("repka") == Stage::GARDEN &&
            campaign_codeword_stage("TEREMOK") == Stage::FOREST &&
            campaign_codeword_stage("MOROZKO") == Stage::DEEP &&
+           credits_codeword("credits") &&
            campaign_codeword_stage("NOPE") < 0;
 }
 
@@ -146,7 +152,7 @@ static bool page_untouched(u32 visible, const char *screen)
 static bool selftest_video_pages(const AssetPack *assets, const GameState *game,
                                 u32 *first, u32 *second)
 {
-    u32 visible, rendered, menu_a, menu_b, code_good, code_bad;
+    u32 visible, rendered, menu_a, menu_b, objective, code_good, code_bad;
     video_vsync_enable(false);
 
     video_render_menu(assets, 0);
@@ -176,6 +182,13 @@ static bool selftest_video_pages(const AssetPack *assets, const GameState *game,
     video_present();
     *second = video_vram_crc();
     if (*first != *second || !video_display_state_valid()) return false;
+
+    visible = *second;
+    video_render_objective(game);
+    if (!page_untouched(visible, "objective")) return false;
+    video_present();
+    objective = video_vram_crc();
+    if (objective == visible || video_frame_crc() != objective) return false;
 
     visible = video_vram_crc();
     video_render_dialogue(game, 1);
@@ -300,6 +313,22 @@ static void render_capture_scene(AssetPack *assets, GameState *game, const char 
     int frame;
     if (scene_is(kind, "intro")) {
         video_render_intro(assets, 1, 30);
+    } else if (scene_is(kind, "objective")) {
+        video_render_objective(game);
+    } else if (scene_is(kind, "talk")) {
+        const u16 guardian_id = assets->level.encounters[0].animal_id;
+        unsigned i;
+        for (i = 0; i < assets->level.animal_count; ++i)
+            if (game->enemies[i].id == guardian_id) {
+                game->player.x = game->enemies[i].x;
+                game->player.y = game->enemies[i].y;
+                break;
+            }
+        video_render_game(game);
+    } else if (scene_is(kind, "deep")) {
+        game->camera_x = fp(54 * TILE_SIZE);
+        game->player.x = fp(63 * TILE_SIZE);
+        video_render_game(game);
     } else if (scene_is(kind, "dialogue")) {
         game->active_dialogue = 1;
         game->active_encounter = 0;
@@ -311,7 +340,9 @@ static void render_capture_scene(AssetPack *assets, GameState *game, const char 
     } else if (scene_is(kind, "home")) {
         video_render_ending(game, 190);
     } else if (scene_is(kind, "credits")) {
-        video_render_credits(game, 260);
+        video_render_credits(game, 200);
+    } else if (scene_is(kind, "creditslate")) {
+        video_render_credits(game, 560);
     } else if (scene_is(kind, "frozen")) {
         game->enemies[0].frozen = 90;
         video_render_game(game);
@@ -593,7 +624,8 @@ static void append_code_key(char *word, unsigned *length)
 {
     static const struct { unsigned key; char letter; } letters[] = {
         {Key::R, 'R'}, {Key::E, 'E'}, {Key::P, 'P'}, {Key::K, 'K'}, {Key::A, 'A'},
-        {Key::T, 'T'}, {Key::M, 'M'}, {Key::O, 'O'}, {Key::Z, 'Z'}
+        {Key::T, 'T'}, {Key::M, 'M'}, {Key::O, 'O'}, {Key::Z, 'Z'}, {Key::C, 'C'},
+        {Key::D, 'D'}, {Key::I, 'I'}, {Key::S, 'S'}
     };
     unsigned i;
     if (key_pressed(Key::BACKSPACE)) {
@@ -608,7 +640,7 @@ static void append_code_key(char *word, unsigned *length)
 }
 
 typedef enum UiState {
-    UI_TITLE, UI_CODE, UI_INTRO, UI_PLAY, UI_LEVEL_CLEAR, UI_PAUSE,
+    UI_TITLE, UI_CODE, UI_INTRO, UI_OBJECTIVE, UI_PLAY, UI_LEVEL_CLEAR, UI_PAUSE,
     UI_ENDING, UI_CREDITS
 } UiState;
 
@@ -676,7 +708,8 @@ static unsigned stage_for_scene(Mode::Enum mode, const char *kind)
     if (mode != Mode::CAPTURE) return Stage::GARDEN;
     if (scene_is(kind, "forest")) return Stage::FOREST;
     if (scene_is(kind, "deep") || scene_is(kind, "home") ||
-        scene_is(kind, "credits") || scene_is(kind, "frozen")) return Stage::DEEP;
+        scene_is(kind, "credits") || scene_is(kind, "creditslate") ||
+        scene_is(kind, "frozen")) return Stage::DEEP;
     return Stage::GARDEN;
 }
 
@@ -811,16 +844,25 @@ int main(int argc, char **argv)
             } else {
                 append_code_key(title.codeword, &title.length);
                 if (key_pressed(Key::ENTER)) {
-                    int selected = campaign_codeword_stage(title.codeword);
-                    if (selected < 0) {
-                        title.invalid = true;
-                    } else if (!enter_stage(&app, (unsigned)selected,
-                                           FULL_HP, DEFAULT_LIVES)) {
-                        break;
-                    } else {
-                        music_play(stage_music[app.stage]);
-                        ui = UI_PLAY;
+                    if (credits_codeword(title.codeword)) {
+                        if (!enter_stage(&app, Stage::DEEP,
+                                         FULL_HP, DEFAULT_LIVES)) break;
+                        music_play(Track::HOME);
+                        ui = UI_CREDITS;
+                        ui_ticks = 0;
                         keyboard_clear_edges();
+                    } else {
+                        int selected = campaign_codeword_stage(title.codeword);
+                        if (selected < 0) {
+                            title.invalid = true;
+                        } else if (!enter_stage(&app, (unsigned)selected,
+                                               FULL_HP, DEFAULT_LIVES)) {
+                            break;
+                        } else {
+                            music_play(stage_music[app.stage]);
+                            ui = UI_OBJECTIVE;
+                            keyboard_clear_edges();
+                        }
                     }
                 }
             }
@@ -839,12 +881,22 @@ int main(int argc, char **argv)
             }
             if (intro_scene >= 4) {
                 if (!enter_stage(&app, Stage::GARDEN, FULL_HP, DEFAULT_LIVES)) break;
-                ui = UI_PLAY;
+                ui = UI_OBJECTIVE;
             } else {
                 video_render_intro(&app.assets, intro_scene, ui_ticks);
                 video_present();
                 continue;
             }
+        }
+        if (ui == UI_OBJECTIVE) {
+            if (key_pressed(Key::ENTER) || key_pressed(Key::SPACE)) {
+                ui = UI_PLAY;
+                keyboard_clear_edges();
+            } else {
+                video_render_objective(&app.game);
+                video_present();
+            }
+            continue;
         }
         if (ui == UI_PAUSE) {
             if (key_pressed(Key::ESCAPE)) running = false;
@@ -862,7 +914,7 @@ int main(int argc, char **argv)
                     u8 hp = app.game.player.hp, lives = app.game.player.lives;
                     if (!enter_stage(&app, app.stage + 1, hp, lives)) break;
                     music_play(stage_music[app.stage]);
-                    ui = UI_PLAY;
+                    ui = UI_OBJECTIVE;
                 } else {
                     app.game.blue_timer = 0;
                     ui = UI_ENDING;
@@ -886,7 +938,7 @@ int main(int argc, char **argv)
             continue;
         }
         if (ui == UI_CREDITS) {
-            if ((key_pressed(Key::ENTER) && ui_ticks > 420) || key_pressed(Key::ESCAPE)) {
+            if ((key_pressed(Key::ENTER) && ui_ticks > 480) || key_pressed(Key::ESCAPE)) {
                 if (!enter_title(&app)) break;
                 ui = UI_TITLE;
             } else {

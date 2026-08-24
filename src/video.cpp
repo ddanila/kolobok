@@ -41,14 +41,14 @@ static_assert(SPRITE_FROZEN + 1 == MAX_SPRITES, "tools/assets.py SPRITE_COUNT");
 #define ROLL_FRAMES 4
 
 typedef struct ThemeStyle {
-    unsigned char sky, horizon, trunk, cloud;
+    unsigned char sky, horizon, trunk, leaf, cloud;
     unsigned cloud_spacing, cloud_parallax;
 } ThemeStyle;
 
 static const ThemeStyle theme_styles[Theme::COUNT] = {
-    {COLOR_SKY,      COLOR_SKY_DEEP, COLOR_PINE, COLOR_CREAM, 68,  8},
-    {COLOR_SKY_DEEP, COLOR_PINE,     COLOR_PINE, COLOR_CREAM, 104, 12},
-    {COLOR_NIGHT,    COLOR_SOOT,     COLOR_SOOT, COLOR_GREY,  184, 12}
+    {COLOR_SKY,      COLOR_SKY_DEEP, COLOR_PINE, COLOR_FOLIAGE, COLOR_CREAM, 68,  8},
+    {COLOR_SKY_DEEP, COLOR_PINE,     COLOR_PINE, COLOR_FOLIAGE, COLOR_CREAM, 104, 12},
+    {COLOR_NIGHT,    COLOR_SOOT,     COLOR_SOOT, COLOR_PINE,    COLOR_GREY,  184, 12}
 };
 
 static const ThemeStyle *style_for(const LevelData *level)
@@ -313,6 +313,10 @@ static void draw_char(int x, int y, char c, unsigned char color, int scale)
 {
     int index = glyph_index(c);
     int row, col;
+    if (c == '.') {
+        fill_rect(x + 2 * scale, y + 6 * scale, scale, scale, color);
+        return;
+    }
     if (index < 0) return;
     for (row = 0; row < 7; ++row)
         for (col = 0; col < 5; ++col)
@@ -450,7 +454,7 @@ static void draw_tree_band(int camera, int pan, const ThemeStyle *style)
         fill_rect(x + pan + 20, HORIZON_Y - height, 7, height, style->trunk);
         for (tier = 0; tier < 4; ++tier)
             fill_rect(x + pan + 8 + tier * 4, 78 - tier * 7,
-                      31 - tier * 8, 8, COLOR_PINE);
+                      31 - tier * 8, 8, style->leaf);
         if (!(x > -TREE_BAND_SPACING && x < 0)) tall ^= 1;
         x += TREE_BAND_SPACING;
     }
@@ -489,6 +493,7 @@ static void draw_cottage(const AssetPack *assets, int camera)
 
 static void draw_level_trees(const AssetPack *assets, int camera)
 {
+    const ThemeStyle *style = style_for(&assets->level);
     unsigned i;
     for (i = 0; i < assets->level.tree_count; ++i) {
         const Tree *tree = &assets->level.trees[i];
@@ -496,14 +501,16 @@ static void draw_level_trees(const AssetPack *assets, int camera)
         int base = HUD_H + tree->y * TILE_SIZE + TILE_SIZE;
         int height = tree->height * 12;
         unsigned char trunk = tree->type == TreeType::BIRCH ? COLOR_GREY_LIGHT : COLOR_BARK;
-        unsigned char leaf = tree->type == TreeType::FIR ? COLOR_PINE : COLOR_FOLIAGE;
+        unsigned char leaf = tree->type == TreeType::FIR ? style->leaf : COLOR_FOLIAGE;
         if (x < -24 || x > LOGICAL_W + 8) continue;
         fill_rect(x + 7, base - height, 4, height, trunk);
         if (tree->type == TreeType::FIR) {
             int row;
-            for (row = 0; row < tree->height; ++row)
-                fill_rect(x + 1 + row, base - height + row * 8,
-                          17 - row * 2, 7, leaf);
+            for (row = 0; row < tree->height; ++row) {
+                int tier = tree->height - 1 - row;
+                fill_rect(x + 1 + tier, base - height + row * 8,
+                          17 - tier * 2, 7, leaf);
+            }
         } else {
             fill_rect(x - 2, base - height - 2, 23, 10, leaf);
             fill_rect(x + 1, base - height - 8, 17, 9, leaf);
@@ -555,6 +562,39 @@ static void draw_entity_plane(const GameState *game, int camera, unsigned plane)
     blit_sprite_plane(assets, game->player.animation,
                       (int)(game->player.x >> FP_SHIFT) - camera,
                       HUD_H + (int)(game->player.y >> FP_SHIFT), plane);
+}
+
+/* A sparkle identifies the required guardian from afar; once the player is in
+ * the exact range game_try_talk accepts, spell out the action instead of making
+ * them guess what the marker means. Optional puzzle animals get the same prompt. */
+static void draw_talk_prompt(const GameState *game, int camera)
+{
+    const LevelData *level = &game->assets->level;
+    int player_x = (int)(game->player.x >> FP_SHIFT);
+    int player_y = (int)(game->player.y >> FP_SHIFT);
+    unsigned encounter;
+    if (game->active_dialogue) return;
+    for (encounter = 0; encounter < level->encounter_count; ++encounter) {
+        unsigned animal;
+        if (game->encounter_solved[encounter]) continue;
+        for (animal = 0; animal < level->animal_count; ++animal) {
+            const EnemyState *enemy = &game->enemies[animal];
+            int enemy_x, enemy_y, dx, dy, x, y;
+            if (enemy->id != level->encounters[encounter].animal_id || enemy->retry)
+                continue;
+            enemy_x = (int)(enemy->x >> FP_SHIFT);
+            enemy_y = (int)(enemy->y >> FP_SHIFT);
+            dx = player_x - enemy_x;
+            dy = player_y - enemy_y;
+            if (dx < -TALK_REACH || dx > TALK_REACH ||
+                dy < -TALK_REACH || dy > TALK_REACH) continue;
+            x = enemy_x - camera - 23;
+            y = HUD_H + enemy_y - 26;
+            fill_rect(x - 3, y - 2, 66, 11, COLOR_NIGHT);
+            draw_text(x, y, "ENTER TALK", COLOR_LEMON, 1);
+            return;
+        }
+    }
 }
 
 static void build_tile_cache(const AssetPack *assets)
@@ -632,6 +672,7 @@ static void draw_world(const GameState *game, int preserve_hud, int draw_entitie
             set_map_mask((unsigned char)(1 << plane));
             draw_entity_plane(game, camera, plane);
         }
+    if (draw_entities) draw_talk_prompt(game, camera);
     if (profile_enabled) profile.sprite_ticks += profile_elapsed(stage);
 }
 
@@ -644,7 +685,8 @@ static void draw_hud_static(const AssetPack *assets, int pan)
     draw_number(58 + pan, 8, assets->level.required_red, COLOR_WHITE);
     draw_text(92 + pan, 8, "HP", COLOR_GOLD, 1);
     draw_text(155 + pan, 8, "L", COLOR_GOLD, 1);
-    draw_text(210 + pan, 8, "GOAL", COLOR_GREY_LIGHT, 1);
+    draw_text(204 + pan, 8, "GUARD", COLOR_GREY_LIGHT, 1);
+    draw_text(260 + pan, 8, "EXIT", COLOR_GREY_LIGHT, 1);
 }
 
 static void build_hud_cache(const AssetPack *assets)
@@ -664,6 +706,8 @@ static void build_hud_cache(const AssetPack *assets)
 
 static void draw_hud(const GameState *game)
 {
+    bool exit_ready = game->red_collected >= game->assets->level.required_red &&
+                      game->guardian_solved;
     if (!hud_cache_valid) build_hud_cache(game->assets);
     latch_copy(HUD_CACHE_BASE + draw_pan * HUD_CACHE_BYTES,
                draw_base, HUD_CACHE_BYTES);
@@ -675,12 +719,10 @@ static void draw_hud(const GameState *game)
         draw_text(181 + draw_pan, 8, "B", COLOR_CYAN, 1);
         draw_number(187 + draw_pan, 8, seconds_left, COLOR_CYAN);
     }
-    if (!game->guardian_solved)
-        draw_text(240 + draw_pan, 8, "TALK", COLOR_LEMON, 1);
-    else if (game->red_collected < game->assets->level.required_red)
-        draw_text(240 + draw_pan, 8, "BERRIES", COLOR_LEMON, 1);
-    else
-        draw_text(240 + draw_pan, 8, "EXIT", COLOR_WHITE, 1);
+    draw_text(238 + draw_pan, 8, game->guardian_solved ? "OK" : "X",
+              game->guardian_solved ? COLOR_WHITE : COLOR_LEMON, 1);
+    draw_text(290 + draw_pan, 8, exit_ready ? "OK" : "X",
+              exit_ready ? COLOR_WHITE : COLOR_LEMON, 1);
 }
 
 bool video_init(const AssetPack *assets)
@@ -792,6 +834,29 @@ void video_render_game(const GameState *game)
         ++profile.frames;
     }
     queue_hidden_frame(draw_pan, RENDER_GAME);
+}
+
+void video_render_objective(const GameState *game)
+{
+    static const char *names[Theme::COUNT] = {
+        "GARDEN MISSION", "SMALL FOREST MISSION", "DEEP FOREST MISSION"
+    };
+    const LevelData *level = &game->assets->level;
+    unsigned theme = level->theme < Theme::COUNT ? level->theme : Theme::GARDEN;
+    int title_x = (LOGICAL_W - (int)strlen(names[theme]) * 6) / 2;
+    if (render_state == RENDER_PAUSE) return;
+    video_render_game(game);
+    fill_rect(14 + draw_pan, 34, 292, 140, COLOR_NIGHT);
+    fill_rect(18 + draw_pan, 38, 284, 132, COLOR_PINE);
+    draw_text(title_x + draw_pan, 47, names[theme], COLOR_YELLOW, 1);
+    draw_text(42 + draw_pan, 68, "1 COLLECT", COLOR_WHITE, 1);
+    draw_number(105 + draw_pan, 68, level->required_red, COLOR_LEMON);
+    draw_text(123 + draw_pan, 68, "RED BERRIES", COLOR_WHITE, 1);
+    draw_text(42 + draw_pan, 87, "2 FIND SPARKLING GUARDIAN", COLOR_WHITE, 1);
+    draw_text(42 + draw_pan, 106, "3 PRESS ENTER TO SOLVE RIDDLE", COLOR_WHITE, 1);
+    draw_text(42 + draw_pan, 125, "4 REACH SPARKLING EXIT", COLOR_WHITE, 1);
+    draw_text(85 + draw_pan, 151, "ENTER OR SPACE START", COLOR_LEMON, 1);
+    render_state = RENDER_PAUSE;
 }
 
 static void begin_title_frame(const AssetPack *assets)
@@ -1073,28 +1138,99 @@ void video_render_ending(const GameState *game, u32 ticks)
     render_state = RENDER_WIN;
 }
 
+#define CRAWL_TOP 42
+#define CRAWL_BOTTOM 178
+#define CRAWL_LINE_SPACING 24
+#define CRAWL_SCALE_ONE 256
+
+/* Project the credit plane toward a vanishing line. Squaring the distance from
+ * the top compresses far-away rows and spreads nearby rows, while the source
+ * plane itself still advances by half a pixel per tick. */
+static int crawl_project_y(int source_y)
+{
+    s32 distance = (s32)source_y - CRAWL_TOP;
+    s32 curved = distance < 0 ? -(distance * distance) : distance * distance;
+    return CRAWL_TOP + (int)(curved / (CRAWL_BOTTOM - CRAWL_TOP));
+}
+
+static int crawl_scale_for_y(int y, int near_scale, int far_scale)
+{
+    if (y < CRAWL_TOP) y = CRAWL_TOP;
+    if (y > CRAWL_BOTTOM) y = CRAWL_BOTTOM;
+    return far_scale + (y - CRAWL_TOP) * (near_scale - far_scale) /
+                       (CRAWL_BOTTOM - CRAWL_TOP);
+}
+
+static int crawl_scaled_offset(int value, int scale)
+{
+    if (value >= 0) return value * scale / CRAWL_SCALE_ONE;
+    return -((-value * scale + CRAWL_SCALE_ONE - 1) / CRAWL_SCALE_ONE);
+}
+
+static bool crawl_glyph_pixel(char c, int row, int col)
+{
+    int index;
+    if (c == '.') return row == 6 && col == 2;
+    index = glyph_index(c);
+    return index >= 0 && (font[index][row] & (16 >> col)) != 0;
+}
+
+static void draw_crawl_text(const char *text, int y, unsigned char color,
+                            int scale_x, int scale_y)
+{
+    int source_width = (int)strlen(text) * 6 - 1;
+    int source_left = -source_width / 2;
+    int center = SCREEN_W / 2 + draw_pan;
+    unsigned character;
+    for (character = 0; text[character]; ++character) {
+        int row, col;
+        if (text[character] == ' ') continue;
+        for (row = 0; row < 7; ++row)
+            for (col = 0; col < 5; ++col)
+                if (crawl_glyph_pixel(text[character], row, col)) {
+                    int source_x = source_left + (int)character * 6 + col;
+                    int x0 = center + crawl_scaled_offset(source_x, scale_x);
+                    int x1 = center + crawl_scaled_offset(source_x + 1, scale_x);
+                    int y0 = y + row * scale_y / CRAWL_SCALE_ONE;
+                    int y1 = y + (row + 1) * scale_y / CRAWL_SCALE_ONE;
+                    if (x1 <= x0) x1 = x0 + 1;
+                    if (y1 <= y0) y1 = y0 + 1;
+                    fill_rect(x0, y0, x1 - x0, y1 - y0, color);
+                }
+    }
+}
+
 void video_render_credits(const GameState *game, u32 ticks)
 {
     static const char *lines[] = {
-        "KOLOBOK EXPANDED ADVENTURE", "DESIGN AND PROGRAMMING", "D DANILA",
+        "KOLOBOK EXPANDED ADVENTURE", "PROGRAMMING", "DANILA SUKHAREV",
+        "ART DESIGN AND IDEAS", "NIL SUKHAREV",
         "ORIGINAL OPL ARRANGEMENTS", "PUBLIC DOMAIN FOLK MELODY",
         "KOROBEINIKI RUSSIA 1861", "BUILT WITH OPEN WATCOM",
-        "TESTED WITH DOSBOX X", "THANK YOU FOR PLAYING"
+        "TESTED WITH DOSBOX X", "CODED WITH GPT 5.6 SOL",
+        "THANK YOU FOR PLAYING"
     };
     const unsigned count = sizeof(lines) / sizeof(lines[0]);
-    int base = 188 - (int)(ticks / 2);
+    int base = CRAWL_BOTTOM - (int)(ticks / 2);
     unsigned i;
     video_render_game(game);
     fill_rect(0, HUD_H, LOGICAL_W, SCREEN_H - HUD_H, COLOR_NIGHT);
     for (i = 0; i < count; ++i) {
-        int y = base + (int)i * 25;
+        int source_y = base + (int)i * CRAWL_LINE_SPACING;
+        int y, scale_x, scale_y;
         unsigned char color = i == 0 ? COLOR_YELLOW
                             : i == count - 1 ? COLOR_LEMON : COLOR_GREY_LIGHT;
-        if (y > 27 && y < 190)
-            draw_text(SCREEN_W / 2 - (int)strlen(lines[i]) * 3 + draw_pan, y,
-                      lines[i], color, 1);
+        if (source_y < CRAWL_TOP - 32 || source_y > CRAWL_BOTTOM + 32) continue;
+        y = crawl_project_y(source_y);
+        scale_x = crawl_scale_for_y(y, 336, 104);
+        scale_y = crawl_scale_for_y(y, 256, 128);
+        draw_crawl_text(lines[i], y, color, scale_x, scale_y);
     }
-    if (base + (int)count * 25 < 45)
+    /* These opaque buffer strips are the crawl aperture: glyph rows cross its
+     * edges one pixel at a time instead of whole lines popping in or out. */
+    fill_rect(0, HUD_H, LOGICAL_W, CRAWL_TOP - HUD_H, COLOR_NIGHT);
+    fill_rect(0, CRAWL_BOTTOM, LOGICAL_W, SCREEN_H - CRAWL_BOTTOM, COLOR_NIGHT);
+    if (base + (int)(count - 1) * CRAWL_LINE_SPACING < CRAWL_TOP - 24)
         draw_text(82 + draw_pan, 166, "ENTER FOR TITLE", COLOR_WHITE, 1);
     render_state = RENDER_WIN;
 }

@@ -23,6 +23,7 @@
 #define BLUE_FRAMES 300
 #define FREEZE_FRAMES 90
 #define INVULNERABLE_FRAMES 30
+#define TALK_REACH 24
 #define FULL_HP 100
 #define DEFAULT_LIVES 3
 #define MAX_LIVES 4

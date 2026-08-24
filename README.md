@@ -23,10 +23,16 @@ DOSBox-X only runs and verifies the completed DOS binaries.
 - `S`: toggle PC-speaker effects
 - Escape: skip the intro, or pause; Enter then resumes and Escape quits to DOS
 
+Each level opens with a short mission card. Collect the displayed number of red
+berries, find the sparkling guardian and press Enter nearby to solve its puzzle,
+then reach the sparkling exit. The HUD keeps the berry count, guardian status,
+and exit status visible while playing.
+
 The title menu offers New Game, Codeword, and Quit. `REPKA` starts the Garden
 without its intro, `TEREMOK` starts the Small Forest, and `MOROZKO` starts the
 Deep Forest. Codeword games begin with 100 HP and three lives; sequential play
-carries HP and lives between levels.
+carries HP and lives between levels. `CREDITS` jumps directly to the perspective
+credit crawl.
 
 Rabbit, fox, wolf, and bear contact causes 10, 25, 40, and 50 damage. Rabbit
 and fox damage cannot reduce HP below one; stronger animals can take a life.
@@ -40,7 +46,7 @@ freezes it for three seconds and bounces Kolobok back up, slightly lower than a
 full held jump but not cuttable by releasing the jump key.
 
 Command-line options are `-nosound`, `-nomusic`, `-selftest`, `-benchmark`, and
-`-capture [intro|garden|forest|deep|dialogue|frozen|gameover|home|credits]`.
+`-capture [intro|objective|garden|forest|deep|talk|dialogue|frozen|gameover|home|credits|creditslate]`.
 `-playtest` is the deterministic target-side campaign driver used by the test
 suite.
 
@@ -67,7 +73,7 @@ visible-page safety self-tests, a complete deterministic three-level
 playthrough, and the 7,350-cycle Deep Forest performance gate. The
 gate requires at least 50 raw frames/s and 29.5 paced frames/s.
 
-`make screenshot` captures nine deterministic DOS-native states into
+`make screenshot` captures twelve deterministic DOS-native states into
 `docs/captures/`, records their VRAM CRCs in `docs/captures/CRC32.txt`, and
 refreshes `docs/screenshot.png`. `make dist` creates a redistributable directory
 containing `KOLOBOK.EXE`, `KOLOEDIT.EXE`, `KOLOBOK.DAT`, all three KLV files,
