@@ -1138,33 +1138,28 @@ void video_render_ending(const GameState *game, u32 ticks)
     render_state = RENDER_WIN;
 }
 
-#define CRAWL_TOP 42
-#define CRAWL_BOTTOM 178
-#define CRAWL_LINE_SPACING 24
-#define CRAWL_SCALE_ONE 256
+#define CRAWL_TOP 44
+#define CRAWL_BOTTOM 196
+#define CRAWL_HORIZON 4
+#define CRAWL_NEAR_DEPTH 128L
+#define CRAWL_DEPTH_PER_PIXEL 2L
+#define CRAWL_LINE_SPACING 12L
+#define CRAWL_X_FOCAL 384L
+#define CRAWL_Y_FOCAL 24576L
 
-/* Project the credit plane toward a vanishing line. Squaring the distance from
- * the top compresses far-away rows and spreads nearby rows, while the source
- * plane itself still advances by half a pixel per tick. */
-static int crawl_project_y(int source_y)
+/* The entire roll lies on one plane tilted away from the viewer. Both axes use
+ * the same depth: parallel text edges therefore converge toward one vanishing
+ * point, and line spacing shrinks in step with glyph height instead of stacking. */
+static int crawl_project_y(s32 depth)
 {
-    s32 distance = (s32)source_y - CRAWL_TOP;
-    s32 curved = distance < 0 ? -(distance * distance) : distance * distance;
-    return CRAWL_TOP + (int)(curved / (CRAWL_BOTTOM - CRAWL_TOP));
-}
-
-static int crawl_scale_for_y(int y, int near_scale, int far_scale)
-{
-    if (y < CRAWL_TOP) y = CRAWL_TOP;
-    if (y > CRAWL_BOTTOM) y = CRAWL_BOTTOM;
-    return far_scale + (y - CRAWL_TOP) * (near_scale - far_scale) /
-                       (CRAWL_BOTTOM - CRAWL_TOP);
+    return CRAWL_HORIZON + (int)(CRAWL_Y_FOCAL / depth);
 }
 
 static int crawl_scaled_offset(int value, int scale)
 {
-    if (value >= 0) return value * scale / CRAWL_SCALE_ONE;
-    return -((-value * scale + CRAWL_SCALE_ONE - 1) / CRAWL_SCALE_ONE);
+    s32 scaled = (s32)value * scale;
+    if (scaled >= 0) return (int)(scaled / 256L);
+    return -(int)((-scaled + 255L) / 256L);
 }
 
 static bool crawl_glyph_pixel(char c, int row, int col)
@@ -1175,28 +1170,44 @@ static bool crawl_glyph_pixel(char c, int row, int col)
     return index >= 0 && (font[index][row] & (16 >> col)) != 0;
 }
 
-static void draw_crawl_text(const char *text, int y, unsigned char color,
-                            int scale_x, int scale_y)
+static void draw_crawl_text(const char *text, s32 line_depth, unsigned char color)
 {
     int source_width = (int)strlen(text) * 6 - 1;
     int source_left = -source_width / 2;
     int center = SCREEN_W / 2 + draw_pan;
+    int row_y0[7], row_y1[7], row_scale[7];
+    u8 row_visible[7];
     unsigned character;
+    int row;
+    for (row = 0; row < 7; ++row) {
+        s32 top_depth = line_depth - (s32)row * CRAWL_DEPTH_PER_PIXEL;
+        s32 bottom_depth = top_depth - CRAWL_DEPTH_PER_PIXEL;
+        s32 middle_depth;
+        row_visible[row] = 0;
+        if (bottom_depth <= 0) continue;
+        row_y0[row] = crawl_project_y(top_depth);
+        row_y1[row] = crawl_project_y(bottom_depth);
+        if (row_y1[row] <= row_y0[row]) continue;
+        middle_depth = (top_depth + bottom_depth) / 2;
+        row_scale[row] = (int)(CRAWL_X_FOCAL * 256L / middle_depth);
+        row_visible[row] = 1;
+    }
     for (character = 0; text[character]; ++character) {
-        int row, col;
+        int col;
         if (text[character] == ' ') continue;
-        for (row = 0; row < 7; ++row)
+        for (row = 0; row < 7; ++row) {
+            if (!row_visible[row]) continue;
             for (col = 0; col < 5; ++col)
                 if (crawl_glyph_pixel(text[character], row, col)) {
                     int source_x = source_left + (int)character * 6 + col;
-                    int x0 = center + crawl_scaled_offset(source_x, scale_x);
-                    int x1 = center + crawl_scaled_offset(source_x + 1, scale_x);
-                    int y0 = y + row * scale_y / CRAWL_SCALE_ONE;
-                    int y1 = y + (row + 1) * scale_y / CRAWL_SCALE_ONE;
+                    int x0 = center + crawl_scaled_offset(source_x, row_scale[row]);
+                    int x1 = center + crawl_scaled_offset(source_x + 1,
+                                                           row_scale[row]);
                     if (x1 <= x0) x1 = x0 + 1;
-                    if (y1 <= y0) y1 = y0 + 1;
-                    fill_rect(x0, y0, x1 - x0, y1 - y0, color);
+                    fill_rect(x0, row_y0[row], x1 - x0,
+                              row_y1[row] - row_y0[row], color);
                 }
+        }
     }
 }
 
@@ -1211,27 +1222,33 @@ void video_render_credits(const GameState *game, u32 ticks)
         "THANK YOU FOR PLAYING"
     };
     const unsigned count = sizeof(lines) / sizeof(lines[0]);
-    int base = CRAWL_BOTTOM - (int)(ticks / 2);
+    s32 scroll = (s32)(ticks * 3UL / 4UL);
     unsigned i;
     video_render_game(game);
     fill_rect(0, HUD_H, LOGICAL_W, SCREEN_H - HUD_H, COLOR_NIGHT);
     for (i = 0; i < count; ++i) {
-        int source_y = base + (int)i * CRAWL_LINE_SPACING;
-        int y, scale_x, scale_y;
+        s32 line_depth = CRAWL_NEAR_DEPTH + scroll -
+                         (s32)i * CRAWL_LINE_SPACING * CRAWL_DEPTH_PER_PIXEL;
+        int y;
         unsigned char color = i == 0 ? COLOR_YELLOW
                             : i == count - 1 ? COLOR_LEMON : COLOR_GREY_LIGHT;
-        if (source_y < CRAWL_TOP - 32 || source_y > CRAWL_BOTTOM + 32) continue;
-        y = crawl_project_y(source_y);
-        scale_x = crawl_scale_for_y(y, 336, 104);
-        scale_y = crawl_scale_for_y(y, 256, 128);
-        draw_crawl_text(lines[i], y, color, scale_x, scale_y);
+        if (line_depth <= 0) continue;
+        y = crawl_project_y(line_depth);
+        if (y < CRAWL_TOP - 8 || y > CRAWL_BOTTOM + 32) continue;
+        draw_crawl_text(lines[i], line_depth, color);
     }
     /* These opaque buffer strips are the crawl aperture: glyph rows cross its
      * edges one pixel at a time instead of whole lines popping in or out. */
     fill_rect(0, HUD_H, LOGICAL_W, CRAWL_TOP - HUD_H, COLOR_NIGHT);
     fill_rect(0, CRAWL_BOTTOM, LOGICAL_W, SCREEN_H - CRAWL_BOTTOM, COLOR_NIGHT);
-    if (base + (int)(count - 1) * CRAWL_LINE_SPACING < CRAWL_TOP - 24)
-        draw_text(82 + draw_pan, 166, "ENTER FOR TITLE", COLOR_WHITE, 1);
+    {
+        s32 last_depth = CRAWL_NEAR_DEPTH + scroll -
+                         (s32)(count - 1) * CRAWL_LINE_SPACING *
+                         CRAWL_DEPTH_PER_PIXEL;
+        if (last_depth > 7L * CRAWL_DEPTH_PER_PIXEL &&
+            crawl_project_y(last_depth - 7L * CRAWL_DEPTH_PER_PIXEL) < CRAWL_TOP)
+            draw_text(82 + draw_pan, 166, "ENTER FOR TITLE", COLOR_WHITE, 1);
+    }
     render_state = RENDER_WIN;
 }
 

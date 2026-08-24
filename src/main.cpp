@@ -152,7 +152,7 @@ static bool page_untouched(u32 visible, const char *screen)
 static bool selftest_video_pages(const AssetPack *assets, const GameState *game,
                                 u32 *first, u32 *second)
 {
-    u32 visible, rendered, menu_a, menu_b, objective, code_good, code_bad;
+    u32 visible, rendered, menu_a, menu_b, objective, crawl_a, code_good, code_bad;
     video_vsync_enable(false);
 
     video_render_menu(assets, 0);
@@ -195,6 +195,17 @@ static bool selftest_video_pages(const AssetPack *assets, const GameState *game,
     if (!page_untouched(visible, "dialogue")) return false;
     video_present();
     if (video_frame_crc() != video_vram_crc()) return false;
+
+    visible = video_vram_crc();
+    video_render_credits(game, 200);
+    if (!page_untouched(visible, "credit crawl")) return false;
+    video_present();
+    crawl_a = video_vram_crc();
+    video_render_credits(game, 202);
+    if (!page_untouched(crawl_a, "animated credit crawl")) return false;
+    video_present();
+    if (crawl_a == video_vram_crc() || video_frame_crc() != video_vram_crc())
+        return false;
 
     visible = video_vram_crc();
     video_render_codeword(assets, "REPKA", 0);
@@ -342,7 +353,7 @@ static void render_capture_scene(AssetPack *assets, GameState *game, const char 
     } else if (scene_is(kind, "credits")) {
         video_render_credits(game, 200);
     } else if (scene_is(kind, "creditslate")) {
-        video_render_credits(game, 560);
+        video_render_credits(game, 400);
     } else if (scene_is(kind, "frozen")) {
         game->enemies[0].frozen = 90;
         video_render_game(game);

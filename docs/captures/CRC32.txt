@@ -9,5 +9,5 @@ dialogue   2048AD34
 frozen     CC82A84F
 gameover   55AF1EAE
 home       CABA9DE9
-credits    F0DFE569
-creditslate DFD22EF3
+credits    DAD05777
+creditslate B2B81B29
