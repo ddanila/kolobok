@@ -353,7 +353,7 @@ static void render_capture_scene(AssetPack *assets, GameState *game, const char 
     } else if (scene_is(kind, "credits")) {
         video_render_credits(game, 200);
     } else if (scene_is(kind, "creditslate")) {
-        video_render_credits(game, 400);
+        video_render_credits(game, 600);
     } else if (scene_is(kind, "frozen")) {
         game->enemies[0].frozen = 90;
         video_render_game(game);
@@ -949,7 +949,7 @@ int main(int argc, char **argv)
             continue;
         }
         if (ui == UI_CREDITS) {
-            if ((key_pressed(Key::ENTER) && ui_ticks > 480) || key_pressed(Key::ESCAPE)) {
+            if ((key_pressed(Key::ENTER) && ui_ticks > 540) || key_pressed(Key::ESCAPE)) {
                 if (!enter_title(&app)) break;
                 ui = UI_TITLE;
             } else {

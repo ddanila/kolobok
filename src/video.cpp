@@ -1214,11 +1214,13 @@ static void draw_crawl_text(const char *text, s32 line_depth, unsigned char colo
 void video_render_credits(const GameState *game, u32 ticks)
 {
     static const char *lines[] = {
-        "KOLOBOK EXPANDED ADVENTURE", "PROGRAMMING", "DANILA SUKHAREV",
-        "ART DESIGN AND IDEAS", "NIL SUKHAREV",
+        "KOLOBOK EXPANDED ADVENTURE", "",
+        "PROGRAMMING", "DANILA SUKHAREV", "",
+        "ART DESIGN AND IDEAS", "NIL SUKHAREV", "",
         "ORIGINAL OPL ARRANGEMENTS", "PUBLIC DOMAIN FOLK MELODY",
-        "KOROBEINIKI RUSSIA 1861", "BUILT WITH OPEN WATCOM",
-        "TESTED WITH DOSBOX X", "CODED WITH GPT 5.6 SOL",
+        "KOROBEINIKI RUSSIA 1861", "",
+        "BUILT WITH OPEN WATCOM", "TESTED WITH DOSBOX X",
+        "CODED WITH GPT 5.6 SOL", "",
         "THANK YOU FOR PLAYING"
     };
     const unsigned count = sizeof(lines) / sizeof(lines[0]);
