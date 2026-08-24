@@ -198,14 +198,17 @@ static bool selftest_video_pages(const AssetPack *assets, const GameState *game,
 
     visible = video_vram_crc();
     video_render_credits(game, 200);
-    if (!page_untouched(visible, "credit crawl")) return false;
+    if (!page_untouched(visible, "credit crawl first pass")) return false;
+    video_render_credits(game, 201);
+    if (!page_untouched(visible, "credit crawl second pass")) return false;
     video_present();
     crawl_a = video_vram_crc();
     video_render_credits(game, 202);
-    if (!page_untouched(crawl_a, "animated credit crawl")) return false;
+    if (!page_untouched(crawl_a, "animated credit crawl first pass")) return false;
+    video_render_credits(game, 203);
+    if (!page_untouched(crawl_a, "animated credit crawl second pass")) return false;
     video_present();
-    if (crawl_a == video_vram_crc() || video_frame_crc() != video_vram_crc())
-        return false;
+    if (crawl_a == video_vram_crc() || video_frame_crc() != video_vram_crc()) return false;
 
     visible = video_vram_crc();
     video_render_codeword(assets, "REPKA", 0);
@@ -258,7 +261,7 @@ static bool benchmark(AssetPack *assets)
     GameState game;
     GameInput input;
     VideoProfile profile;
-    clock_t started, elapsed, paced_started, paced_elapsed, next;
+    clock_t started, elapsed, paced_started, paced_elapsed, crawl_elapsed, next;
     unsigned frame, remainder = 0;
     int span = (int)assets->level.width * TILE_SIZE - SCREEN_W;
     game_init(&game, assets);
@@ -300,6 +303,13 @@ static bool benchmark(AssetPack *assets)
     }
     video_profile_enable(false);
     video_profile_get(&profile);
+
+    started = clock();
+    for (frame = 0; frame < BENCH_FRAMES; ++frame) {
+        video_render_credits(&game, 200 + frame);
+        video_present();
+    }
+    crawl_elapsed = clock() - started;
     video_shutdown();
 
     if (!elapsed) elapsed = 1;
@@ -310,6 +320,9 @@ static bool benchmark(AssetPack *assets)
            profile.frames, profile.background_ticks, profile.tile_ticks,
            profile.sprite_ticks, profile.hud_ticks, profile.present_ticks,
            PROFILE_TIMER_HZ);
+    printf("KOLOBOK CRAWL frames=%u ticks=%lu hz=%lu fps10=%lu\n",
+           BENCH_FRAMES, (unsigned long)crawl_elapsed, (unsigned long)CLOCKS_PER_SEC,
+           fps_times_ten(crawl_elapsed));
     return true;
 }
 
@@ -352,8 +365,10 @@ static void render_capture_scene(AssetPack *assets, GameState *game, const char 
         video_render_ending(game, 190);
     } else if (scene_is(kind, "credits")) {
         video_render_credits(game, 200);
+        video_render_credits(game, 201);
     } else if (scene_is(kind, "creditslate")) {
         video_render_credits(game, 600);
+        video_render_credits(game, 601);
     } else if (scene_is(kind, "frozen")) {
         game->enemies[0].frozen = 90;
         video_render_game(game);

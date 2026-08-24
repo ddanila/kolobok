@@ -70,8 +70,9 @@ tests, campaign balance checks, KLV/archive JSON round-trips and CRC rejection,
 a check that every level `tools/levels.py` emits passes the runtime's own
 validator, the AdLib mock register sink, DOS-native game/editor and
 visible-page safety self-tests, a complete deterministic three-level
-playthrough, and the 7,350-cycle Deep Forest performance gate. The
-gate requires at least 50 raw frames/s and 29.5 paced frames/s.
+playthrough, and the 7,350-cycle Deep Forest and credit-crawl performance gates.
+The gates require at least 50 raw gameplay frames/s, 29.5 paced frames/s, and
+30 credit-render iterations/s so music keeps its intended tempo.
 
 `make screenshot` captures twelve deterministic DOS-native states into
 `docs/captures/`, records their VRAM CRCs in `docs/captures/CRC32.txt`, and

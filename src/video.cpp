@@ -73,6 +73,9 @@ static bool profile_enabled;
 int render_state;
 static bool title_cache_valid;
 static bool hud_cache_valid;
+static bool crawl_building;
+static unsigned crawl_build_base;
+static u32 crawl_build_ticks;
 static short tree_origin[MAX_CAMERA + 1];
 static unsigned char tree_tall[MAX_CAMERA + 1];
 static unsigned char capture_row[SCREEN_W * 3];
@@ -761,7 +764,7 @@ bool video_init(const AssetPack *assets)
     draw_base = display_base = pending_base = GAME_PAGE_0;
     draw_pan = display_pan = 0;
     pending_pan = 0;
-    flip_pending = false;
+    flip_pending = crawl_building = false;
     set_display_start(display_base, display_pan);
 #ifdef KOLO_DEBUG_LOAD
     puts("VIDEO display");
@@ -775,7 +778,7 @@ void video_shutdown(void)
     if (scratch_segment != 0) _dos_freemem(scratch_segment);
     scratch = NULL;
     scratch_segment = 0;
-    title_cache_valid = hud_cache_valid = false;
+    title_cache_valid = hud_cache_valid = crawl_building = false;
     render_state = RENDER_NONE;
     current_map_mask = 0xff;
 }
@@ -1170,20 +1173,21 @@ static bool crawl_glyph_pixel(char c, int row, int col)
     return index >= 0 && (font[index][row] & (16 >> col)) != 0;
 }
 
-static void draw_crawl_text(const char *text, s32 line_depth, unsigned char color)
+static void draw_crawl_text(const char *text, s32 line_depth, unsigned char color,
+                            unsigned pass)
 {
     int source_width = (int)strlen(text) * 6 - 1;
     int source_left = -source_width / 2;
     int center = SCREEN_W / 2 + draw_pan;
     int row_y0[7], row_y1[7], row_scale[7];
     u8 row_visible[7];
-    unsigned character;
     int row;
     for (row = 0; row < 7; ++row) {
         s32 top_depth = line_depth - (s32)row * CRAWL_DEPTH_PER_PIXEL;
         s32 bottom_depth = top_depth - CRAWL_DEPTH_PER_PIXEL;
         s32 middle_depth;
         row_visible[row] = 0;
+        if (((unsigned)row & 1U) != pass) continue;
         if (bottom_depth <= 0) continue;
         row_y0[row] = crawl_project_y(top_depth);
         row_y1[row] = crawl_project_y(bottom_depth);
@@ -1192,21 +1196,29 @@ static void draw_crawl_text(const char *text, s32 line_depth, unsigned char colo
         row_scale[row] = (int)(CRAWL_X_FOCAL * 256L / middle_depth);
         row_visible[row] = 1;
     }
-    for (character = 0; text[character]; ++character) {
-        int col;
-        if (text[character] == ' ') continue;
-        for (row = 0; row < 7; ++row) {
-            if (!row_visible[row]) continue;
-            for (col = 0; col < 5; ++col)
-                if (crawl_glyph_pixel(text[character], row, col)) {
-                    int source_x = source_left + (int)character * 6 + col;
-                    int x0 = center + crawl_scaled_offset(source_x, row_scale[row]);
-                    int x1 = center + crawl_scaled_offset(source_x + 1,
+    /* Project whole horizontal font runs, not individual lit pixels. Besides
+     * preserving each row's trapezoid, this reduces hundreds of VGA map-mask
+     * changes per line to roughly two per character. */
+    for (row = 0; row < 7; ++row) {
+        unsigned character;
+        int source_x = 0, run_start = -1;
+        if (!row_visible[row]) continue;
+        for (character = 0; text[character]; ++character) {
+            int col;
+            for (col = 0; col < 6; ++col, ++source_x) {
+                bool lit = col < 5 && crawl_glyph_pixel(text[character], row, col);
+                if (lit && run_start < 0) run_start = source_x;
+                if (!lit && run_start >= 0) {
+                    int x0 = center + crawl_scaled_offset(source_left + run_start,
+                                                           row_scale[row]);
+                    int x1 = center + crawl_scaled_offset(source_left + source_x,
                                                            row_scale[row]);
                     if (x1 <= x0) x1 = x0 + 1;
                     fill_rect(x0, row_y0[row], x1 - x0,
                               row_y1[row] - row_y0[row], color);
+                    run_start = -1;
                 }
+            }
         }
     }
 }
@@ -1224,10 +1236,22 @@ void video_render_credits(const GameState *game, u32 ticks)
         "THANK YOU FOR PLAYING"
     };
     const unsigned count = sizeof(lines) / sizeof(lines[0]);
-    s32 scroll = (s32)(ticks * 3UL / 4UL);
+    unsigned pass = crawl_building ? 1U : 0U;
+    s32 scroll;
     unsigned i;
-    video_render_game(game);
-    fill_rect(0, HUD_H, LOGICAL_W, SCREEN_H - HUD_H, COLOR_NIGHT);
+    (void)game;
+    if (!crawl_building) {
+        begin_hidden_frame();
+        crawl_build_base = draw_base;
+        crawl_build_ticks = ticks;
+        fill_rect(0, 0, LOGICAL_W, SCREEN_H, COLOR_NIGHT);
+        crawl_building = true;
+    } else {
+        draw_base = crawl_build_base;
+        draw_pan = 0;
+        ticks = crawl_build_ticks;
+    }
+    scroll = (s32)(ticks * 3UL / 4UL);
     for (i = 0; i < count; ++i) {
         s32 line_depth = CRAWL_NEAR_DEPTH + scroll -
                          (s32)i * CRAWL_LINE_SPACING * CRAWL_DEPTH_PER_PIXEL;
@@ -1237,8 +1261,9 @@ void video_render_credits(const GameState *game, u32 ticks)
         if (line_depth <= 0) continue;
         y = crawl_project_y(line_depth);
         if (y < CRAWL_TOP - 8 || y > CRAWL_BOTTOM + 32) continue;
-        draw_crawl_text(lines[i], line_depth, color);
+        draw_crawl_text(lines[i], line_depth, color, pass);
     }
+    if (pass == 0) return;
     /* These opaque buffer strips are the crawl aperture: glyph rows cross its
      * edges one pixel at a time instead of whole lines popping in or out. */
     fill_rect(0, HUD_H, LOGICAL_W, CRAWL_TOP - HUD_H, COLOR_NIGHT);
@@ -1251,7 +1276,8 @@ void video_render_credits(const GameState *game, u32 ticks)
             crawl_project_y(last_depth - 7L * CRAWL_DEPTH_PER_PIXEL) < CRAWL_TOP)
             draw_text(82 + draw_pan, 166, "ENTER FOR TITLE", COLOR_WHITE, 1);
     }
-    render_state = RENDER_WIN;
+    crawl_building = false;
+    queue_hidden_frame(0, RENDER_WIN);
 }
 
 static void reconstruct_page(unsigned base, unsigned char pan)

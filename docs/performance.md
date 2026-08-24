@@ -24,20 +24,25 @@ Deep Forest frames whose camera positions traverse the complete 160-tile level. 
 a gameplay update, direct-to-VRAM background and HUD rendering, visible terrain
 and entity rasterization, and a hardware page flip.
 
-It reports two timing measurements:
+It reports three timing measurements:
 
 - raw throughput, which exposes rendering regressions;
 - the same workload under the game's fixed 30 Hz scheduler, which detects missed
-  frame deadlines and pacing regressions.
+  frame deadlines and pacing regressions;
+- 60 credit-crawl render passes, which verifies that the two-pass crawl renderer
+  can service the music sequencer at 30 Hz while presenting completed crawl
+  frames at 15 Hz.
 
 It then uses PIT channel 2 as a 1,193,182 Hz target-side profiler and reports
 separate totals for background/cottage, terrain tiles, sprites, HUD, and VGA
 presentation. This avoids the DOS runtime clock's coarse tick granularity for
 individual renderer stages.
 
-`make perf-test` fails below 50.0 raw frames/s or 29.5 paced frames/s, or if any
-profile stage is absent or zero. The raw gate leaves substantial headroom above
-the 30 Hz gameplay deadline without baking one host's exact result into the test.
+`make perf-test` fails below 50.0 raw gameplay frames/s, 29.5 paced frames/s, or
+30.0 credit-crawl passes/s, or if any profile stage is absent or zero. The raw
+gameplay gate leaves substantial headroom above the 30 Hz deadline without
+baking one host's exact result into the test; the crawl gate directly protects
+the main-loop music tick from render-induced slowdown.
 
 ## Measured results
 
@@ -53,6 +58,12 @@ binary measures about 54.5 fps on an Apple Silicon host with a Homebrew
 DOSBox-X, so treat differences of a few frames per second between hosts as
 emulator variance rather than as a rendering change; the per-stage profile
 counters are the reliable comparison.
+
+The perspective credit crawl measures 39.0 render passes/s on that same Apple
+Silicon-hosted 386DX-40 profile. Each completed image is built as balanced even-
+and odd-glyph-row passes on the hidden page, so no partial frame is displayed;
+the 30 Hz main loop and music sequencer retain headroom while the crawl itself
+updates at 15 Hz.
 
 The representative 60-frame expanded profile, measured on the macOS arm64 host
 against the current renderer, reports 454,318 background ticks, 417,439 tile
@@ -83,6 +94,8 @@ between those buckets.
 - A VGA-resident title template copied to the hidden game page before menu or
   codeword overlays are drawn; all UI updates reach the screen through the same
   vblank-synchronized page flip as gameplay.
+- Credit frames skip world and HUD rendering, merge adjacent glyph pixels into
+  projected horizontal runs, and split those runs across two hidden-page passes.
 - Precomputed tree/cloud origins and tree variants remove division and modulo
   from the per-frame background loop.
 - Plane masks combine unaligned rectangle edge pixels into one vertical pass.
