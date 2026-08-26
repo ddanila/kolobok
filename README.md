@@ -53,9 +53,11 @@ suite.
 ## Build and test
 
 Install GNU Make, Bash, curl, unzip, `tar` with xz support, Python 3 with
-Pillow, a C compiler, and DOSBox-X, then run:
+Pillow, a C compiler, and DOSBox-X. Clone with submodules, or initialize them
+in an existing checkout, then run:
 
 ```sh
+git submodule update --init
 make
 make test
 make dist
@@ -73,6 +75,12 @@ visible-page safety self-tests, a complete deterministic three-level
 playthrough, and the 7,350-cycle Deep Forest and credit-crawl performance gates.
 The gates require at least 50 raw gameplay frames/s, 29.5 paced frames/s, and
 30 credit-render iterations/s so music keeps its intended tempo.
+
+The perspective projection and font-run rasterization for the credit crawl come
+from the pinned [`dos-game-common`](https://github.com/ddanila/dos-game-common)
+submodule in `vendor/dos-game-common`. Kolobok retains its credit text, colors,
+font lookup, VGA rectangle writer, page-flip lifecycle, and aperture masking;
+the shared C89 module contains only the reusable visual-effect implementation.
 
 `make screenshot` captures twelve deterministic DOS-native states into
 `docs/captures/`, records their VRAM CRCs in `docs/captures/CRC32.txt`, and

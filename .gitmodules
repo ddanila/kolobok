@@ -1,0 +1,3 @@
+[submodule "vendor/dos-game-common"]
+	path = vendor/dos-game-common
+	url = https://github.com/ddanila/dos-game-common.git

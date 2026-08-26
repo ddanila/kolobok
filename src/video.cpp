@@ -3,6 +3,8 @@
 #include "platform.h"
 #include "videoint.h"
 
+#include "dosgame/credit_crawl.h"
+
 #include <conio.h>
 #include <dos.h>
 #include <i86.h>
@@ -1141,104 +1143,50 @@ void video_render_ending(const GameState *game, u32 ticks)
     render_state = RENDER_WIN;
 }
 
-#define CRAWL_TOP 44
-#define CRAWL_BOTTOM 196
-#define CRAWL_HORIZON 4
-#define CRAWL_NEAR_DEPTH 128L
-#define CRAWL_DEPTH_PER_PIXEL 2L
-#define CRAWL_LINE_SPACING 12L
-#define CRAWL_X_FOCAL 384L
-#define CRAWL_Y_FOCAL 24576L
+static const DgcCreditCrawlConfig crawl_config = {
+    SCREEN_W, 44, 196, 4,
+    128L, 2L, 12L, 384L, 24576L,
+    5, 7, 6, 8, 32, 3UL, 4UL
+};
 
-/* The entire roll lies on one plane tilted away from the viewer. Both axes use
- * the same depth: parallel text edges therefore converge toward one vanishing
- * point, and line spacing shrinks in step with glyph height instead of stacking. */
-static int crawl_project_y(s32 depth)
-{
-    return CRAWL_HORIZON + (int)(CRAWL_Y_FOCAL / depth);
-}
-
-static int crawl_scaled_offset(int value, int scale)
-{
-    s32 scaled = (s32)value * scale;
-    if (scaled >= 0) return (int)(scaled / 256L);
-    return -(int)((-scaled + 255L) / 256L);
-}
-
-static bool crawl_glyph_pixel(char c, int row, int col)
+static int crawl_glyph_pixel(void *context, char c,
+                             unsigned row, unsigned col)
 {
     int index;
+    (void)context;
     if (c == '.') return row == 6 && col == 2;
     index = glyph_index(c);
     return index >= 0 && (font[index][row] & (16 >> col)) != 0;
 }
 
-static void draw_crawl_text(const char *text, s32 line_depth, unsigned char color,
-                            unsigned pass)
+static void crawl_fill_rect(void *context, int x, int y, int width, int height,
+                            unsigned char color)
 {
-    int source_width = (int)strlen(text) * 6 - 1;
-    int source_left = -source_width / 2;
-    int center = SCREEN_W / 2 + draw_pan;
-    int row_y0[7], row_y1[7], row_scale[7];
-    u8 row_visible[7];
-    int row;
-    for (row = 0; row < 7; ++row) {
-        s32 top_depth = line_depth - (s32)row * CRAWL_DEPTH_PER_PIXEL;
-        s32 bottom_depth = top_depth - CRAWL_DEPTH_PER_PIXEL;
-        s32 middle_depth;
-        row_visible[row] = 0;
-        if (((unsigned)row & 1U) != pass) continue;
-        if (bottom_depth <= 0) continue;
-        row_y0[row] = crawl_project_y(top_depth);
-        row_y1[row] = crawl_project_y(bottom_depth);
-        if (row_y1[row] <= row_y0[row]) continue;
-        middle_depth = (top_depth + bottom_depth) / 2;
-        row_scale[row] = (int)(CRAWL_X_FOCAL * 256L / middle_depth);
-        row_visible[row] = 1;
-    }
-    /* Project whole horizontal font runs, not individual lit pixels. Besides
-     * preserving each row's trapezoid, this reduces hundreds of VGA map-mask
-     * changes per line to roughly two per character. */
-    for (row = 0; row < 7; ++row) {
-        unsigned character;
-        int source_x = 0, run_start = -1;
-        if (!row_visible[row]) continue;
-        for (character = 0; text[character]; ++character) {
-            int col;
-            for (col = 0; col < 6; ++col, ++source_x) {
-                bool lit = col < 5 && crawl_glyph_pixel(text[character], row, col);
-                if (lit && run_start < 0) run_start = source_x;
-                if (!lit && run_start >= 0) {
-                    int x0 = center + crawl_scaled_offset(source_left + run_start,
-                                                           row_scale[row]);
-                    int x1 = center + crawl_scaled_offset(source_left + source_x,
-                                                           row_scale[row]);
-                    if (x1 <= x0) x1 = x0 + 1;
-                    fill_rect(x0, row_y0[row], x1 - x0,
-                              row_y1[row] - row_y0[row], color);
-                    run_start = -1;
-                }
-            }
-        }
-    }
+    (void)context;
+    fill_rect(x, y, width, height, color);
 }
 
 void video_render_credits(const GameState *game, u32 ticks)
 {
-    static const char *lines[] = {
-        "KOLOBOK EXPANDED ADVENTURE", "",
-        "PROGRAMMING", "DANILA SUKHAREV", "",
-        "ART DESIGN AND IDEAS", "NIL SUKHAREV", "",
-        "ORIGINAL OPL ARRANGEMENTS", "PUBLIC DOMAIN FOLK MELODY",
-        "KOROBEINIKI RUSSIA 1861", "",
-        "BUILT WITH OPEN WATCOM", "TESTED WITH DOSBOX X",
-        "CODED WITH GPT 5.6 SOL", "",
-        "THANK YOU FOR PLAYING"
+    static const DgcCreditCrawlLine lines[] = {
+        {"KOLOBOK EXPANDED ADVENTURE", COLOR_YELLOW}, {"", COLOR_GREY_LIGHT},
+        {"PROGRAMMING", COLOR_GREY_LIGHT},
+        {"DANILA SUKHAREV", COLOR_GREY_LIGHT}, {"", COLOR_GREY_LIGHT},
+        {"ART DESIGN AND IDEAS", COLOR_GREY_LIGHT},
+        {"NIL SUKHAREV", COLOR_GREY_LIGHT}, {"", COLOR_GREY_LIGHT},
+        {"ORIGINAL OPL ARRANGEMENTS", COLOR_GREY_LIGHT},
+        {"PUBLIC DOMAIN FOLK MELODY", COLOR_GREY_LIGHT},
+        {"KOROBEINIKI RUSSIA 1861", COLOR_GREY_LIGHT}, {"", COLOR_GREY_LIGHT},
+        {"BUILT WITH OPEN WATCOM", COLOR_GREY_LIGHT},
+        {"TESTED WITH DOSBOX X", COLOR_GREY_LIGHT},
+        {"CODED WITH GPT 5.6 SOL", COLOR_GREY_LIGHT}, {"", COLOR_GREY_LIGHT},
+        {"THANK YOU FOR PLAYING", COLOR_LEMON}
+    };
+    static const DgcCreditCrawlRenderer renderer = {
+        NULL, crawl_glyph_pixel, crawl_fill_rect
     };
     const unsigned count = sizeof(lines) / sizeof(lines[0]);
     unsigned pass = crawl_building ? 1U : 0U;
-    s32 scroll;
-    unsigned i;
     (void)game;
     if (!crawl_building) {
         begin_hidden_frame();
@@ -1251,31 +1199,16 @@ void video_render_credits(const GameState *game, u32 ticks)
         draw_pan = 0;
         ticks = crawl_build_ticks;
     }
-    scroll = (s32)(ticks * 3UL / 4UL);
-    for (i = 0; i < count; ++i) {
-        s32 line_depth = CRAWL_NEAR_DEPTH + scroll -
-                         (s32)i * CRAWL_LINE_SPACING * CRAWL_DEPTH_PER_PIXEL;
-        int y;
-        unsigned char color = i == 0 ? COLOR_YELLOW
-                            : i == count - 1 ? COLOR_LEMON : COLOR_GREY_LIGHT;
-        if (line_depth <= 0) continue;
-        y = crawl_project_y(line_depth);
-        if (y < CRAWL_TOP - 8 || y > CRAWL_BOTTOM + 32) continue;
-        draw_crawl_text(lines[i], line_depth, color, pass);
-    }
+    dgc_credit_crawl_render(&crawl_config, &renderer, lines, count,
+                            ticks, pass, SCREEN_W / 2 + draw_pan);
     if (pass == 0) return;
     /* These opaque buffer strips are the crawl aperture: glyph rows cross its
      * edges one pixel at a time instead of whole lines popping in or out. */
-    fill_rect(0, HUD_H, LOGICAL_W, CRAWL_TOP - HUD_H, COLOR_NIGHT);
-    fill_rect(0, CRAWL_BOTTOM, LOGICAL_W, SCREEN_H - CRAWL_BOTTOM, COLOR_NIGHT);
-    {
-        s32 last_depth = CRAWL_NEAR_DEPTH + scroll -
-                         (s32)(count - 1) * CRAWL_LINE_SPACING *
-                         CRAWL_DEPTH_PER_PIXEL;
-        if (last_depth > 7L * CRAWL_DEPTH_PER_PIXEL &&
-            crawl_project_y(last_depth - 7L * CRAWL_DEPTH_PER_PIXEL) < CRAWL_TOP)
-            draw_text(82 + draw_pan, 166, "ENTER FOR TITLE", COLOR_WHITE, 1);
-    }
+    fill_rect(0, HUD_H, LOGICAL_W, crawl_config.viewport_top - HUD_H, COLOR_NIGHT);
+    fill_rect(0, crawl_config.viewport_bottom, LOGICAL_W,
+              SCREEN_H - crawl_config.viewport_bottom, COLOR_NIGHT);
+    if (dgc_credit_crawl_finished(&crawl_config, count, ticks))
+        draw_text(82 + draw_pan, 166, "ENTER FOR TITLE", COLOR_WHITE, 1);
     crawl_building = false;
     queue_hidden_frame(0, RENDER_WIN);
 }

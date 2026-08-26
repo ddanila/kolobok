@@ -16,32 +16,43 @@ if [[ "${KOLO_TRACE:-0}" != "0" ]]; then
 fi
 
 mkdir -p "$project_root/build"
-rm -f "$project_root/build/KOLOBOK.EXE" "$project_root/build/KOLOEDIT.EXE" "$project_root/build/WATCOM.LOG"
+rm -f "$project_root/build/KOLOBOK.EXE" "$project_root/build/KOLOEDIT.EXE" \
+    "$project_root/build/credit_crawl.obj" "$project_root/build/WATCOM-COMMON.LOG" \
+    "$project_root/build/WATCOM.LOG" "$project_root/build/WATCOM-EDITOR.LOG"
+if ! wcc -q -bt=dos -ms -3 -ox -s \
+    -i="$project_root/vendor/dos-game-common/include" \
+    -fo="$project_root/build/credit_crawl.obj" \
+    "$project_root/vendor/dos-game-common/src/credit_crawl.c" \
+    >"$project_root/build/WATCOM-COMMON.LOG" 2>&1; then
+    sed -n '1,200p' "$project_root/build/WATCOM-COMMON.LOG" >&2
+    exit 1
+fi
 pushd "$project_root/build" >/dev/null
-if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k8192 -i="$project_root/src" -i="$project_root/build/generated" ${trace_define[@]+"${trace_define[@]}"} \
+if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k8192 -i="$project_root/src" -i="$project_root/build/generated" -i="$project_root/vendor/dos-game-common/include" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOBOK.EXE \
     "$project_root/src/main.cpp" "$project_root/src/game.cpp" \
     "$project_root/src/game_state.cpp" \
     "$project_root/src/assets.cpp" "$project_root/src/platform.cpp" \
     "$project_root/src/video.cpp" "$project_root/src/music.cpp" \
-    "$project_root/src/trace.cpp" >WATCOM.LOG 2>&1; then
+    "$project_root/src/trace.cpp" credit_crawl.obj >WATCOM.LOG 2>&1; then
     popd >/dev/null
     sed -n '1,200p' "$project_root/build/WATCOM.LOG" >&2
     exit 1
 fi
-if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k16384 -i="$project_root/src" -i="$project_root/build/generated" ${trace_define[@]+"${trace_define[@]}"} \
+if ! wcl -q -bt=dos -ms -3 -zastd=c++0x -ox -s -k16384 -i="$project_root/src" -i="$project_root/build/generated" -i="$project_root/vendor/dos-game-common/include" ${trace_define[@]+"${trace_define[@]}"} \
     -fe=KOLOEDIT.EXE \
     "$project_root/src/editor.cpp" "$project_root/src/editcore.cpp" \
     "$project_root/src/game_state.cpp" \
     "$project_root/src/assets.cpp" "$project_root/src/platform.cpp" \
     "$project_root/src/video.cpp" "$project_root/src/videoedit.cpp" \
-    "$project_root/src/trace.cpp" >WATCOM-EDITOR.LOG 2>&1; then
+    "$project_root/src/trace.cpp" credit_crawl.obj >WATCOM-EDITOR.LOG 2>&1; then
     popd >/dev/null
     sed -n '1,200p' "$project_root/build/WATCOM-EDITOR.LOG" >&2
     exit 1
 fi
 popd >/dev/null
-if [[ -s "$project_root/build/WATCOM.LOG" || -s "$project_root/build/WATCOM-EDITOR.LOG" ]]; then
+if [[ -s "$project_root/build/WATCOM-COMMON.LOG" || -s "$project_root/build/WATCOM.LOG" || -s "$project_root/build/WATCOM-EDITOR.LOG" ]]; then
+    cat "$project_root/build/WATCOM-COMMON.LOG"
     cat "$project_root/build/WATCOM.LOG"
     cat "$project_root/build/WATCOM-EDITOR.LOG"
     echo "Open Watcom produced diagnostics" >&2
